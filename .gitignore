@@ -1,15 +1,9 @@
-# T001 local engineering workspace: helper scripts, downloads and run outputs.
+# T001 local engineering workspace: helper scripts, downloads, run outputs.
 # Nothing here is part of the algorithm code and it is not meant to be pushed.
+# All T001 artifacts now live under this single directory:
+#   _so2_work/{scripts,assets,runs,logs}/
 _so2_work/
-t001_*/
+
+# Python bytecode produced by importing the in-repo SO2 package.
 __pycache__/
 *.pyc
-total_config.py
-formatted_total_config.py
-# TensorBoard dirs created by the T001 verification scripts (train.py's own run
-# dirs are named after exp_name, e.g. t001_smoke_hc_mr_seed0 -> covered by t001_*).
-/attr/
-/microbench/
-/reload/
-/seed0_run*/
-/seed1/
