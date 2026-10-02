@@ -6,3 +6,10 @@ __pycache__/
 *.pyc
 total_config.py
 formatted_total_config.py
+# TensorBoard dirs created by the T001 verification scripts (train.py's own run
+# dirs are named after exp_name, e.g. t001_smoke_hc_mr_seed0 -> covered by t001_*).
+/attr/
+/microbench/
+/reload/
+/seed0_run*/
+/seed1/
