@@ -1,0 +1,8 @@
+# T001 local engineering workspace: helper scripts, downloads and run outputs.
+# Nothing here is part of the algorithm code and it is not meant to be pushed.
+_so2_work/
+t001_*/
+__pycache__/
+*.pyc
+total_config.py
+formatted_total_config.py
