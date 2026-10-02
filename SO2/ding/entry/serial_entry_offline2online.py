@@ -1,5 +1,8 @@
 from typing import Union, Optional, List, Any, Tuple
 import os
+import sys
+import json
+import time
 import torch
 import logging
 import random
@@ -23,6 +26,8 @@ def serial_pipeline_offline2online(
         env_setting: Optional[List[Any]] = None,
         model: Optional[torch.nn.Module] = None,
         max_iterations: Optional[int] = int(1e6),
+        max_env_steps: Optional[int] = None,
+        max_wall_clock_sec: Optional[float] = None,
 ) -> 'Policy':  # noqa
     """
     Overview:
@@ -37,6 +42,12 @@ def serial_pipeline_offline2online(
         - model (:obj:`Optional[torch.nn.Module]`): Instance of torch.nn.Module.
         - max_iterations (:obj:`Optional[torch.nn.Module]`): Learner's max iteration. Pipeline will stop \
             when reaching this iteration.
+        - max_env_steps (:obj:`Optional[int]`): T001 explicit engineering stop budget. Total training \
+            environment steps INCLUDING `random_collect_size`. ``None`` keeps upstream behaviour \
+            (hard-coded stop at 150k policy env-steps). This only bounds *when* the loop stops; it does \
+            not change the learning rule.
+        - max_wall_clock_sec (:obj:`Optional[float]`): T001 explicit engineering wall-clock stop budget \
+            for the online loop. ``None`` disables the wall-clock bound.
     Returns:
         - policy (:obj:`Policy`): Converged policy.
     """
@@ -90,6 +101,35 @@ def serial_pipeline_offline2online(
     # ==========
     # Main loop
     # ==========
+    # T001 engineering stop budget: upstream had a hard-coded `sys.exit(0)` once the
+    # collector reached 150k env-steps, which skips `after_run` and therefore the
+    # final checkpoint save. Replace it with an explicit, logged, configurable stop.
+    # Nothing below changes the loss, target computation, sampling or update counts.
+    _budget_t0 = time.time()
+    _online_steps = 0
+
+    def _budget_reason():
+        if max_wall_clock_sec is not None and (time.time() - _budget_t0) >= max_wall_clock_sec:
+            return 'wall_clock'
+        if max_env_steps is not None and (collector.envstep + cfg.policy.random_collect_size) >= max_env_steps:
+            return 'env_steps'
+        return None
+
+    def _emit_budget(reason):
+        rec = {
+            'event': 'budget_stop',
+            'reason': reason,
+            'policy_envstep': int(collector.envstep),
+            'total_envstep_incl_random_collect': int(collector.envstep + cfg.policy.random_collect_size),
+            'random_collect_size': int(cfg.policy.random_collect_size),
+            'online_iterations': int(_online_steps),
+            'learner_train_iter': int(learner.train_iter),
+            'wall_clock_sec': round(time.time() - _budget_t0, 3),
+            'max_env_steps': max_env_steps,
+            'max_wall_clock_sec': max_wall_clock_sec,
+        }
+        print('[T001_BUDGET] ' + json.dumps(rec), flush=True)
+
     # Learner's before_run hook.
     learner.call_hook('before_run')
     stop = False
@@ -135,14 +175,15 @@ def serial_pipeline_offline2online(
         policy._cfg.learn.only_value = False
 
     for _ in range(max_iterations):
+        _reason = _budget_reason()
+        if _reason is not None:
+            _emit_budget(_reason)
+            break
         if evaluator.should_eval(learner.train_iter):
             stop, reward = evaluator.eval(learner.save_checkpoint, learner.train_iter, collector.envstep)
             if stop:
                 break
         collect_kwargs = commander.step()
-        if collector.envstep>150000:
-            import sys
-            sys.exit(0)
         # Collect data by default config n_sample/n_episode
         if cfg.policy.learn.concat_online_ratio > 0:
             new_data = collector.collect(train_iter=learner.train_iter, policy_kwargs=collect_kwargs)
@@ -181,6 +222,13 @@ def serial_pipeline_offline2online(
             learner.train(train_data, collector.envstep)
             # if learner.policy.get_attribute('priority'):
                 # replay_buffer.update(learner.priority_info)
+        _online_steps += 1
+        if _online_steps % 100 == 0:
+            _emit_budget('periodic')
+
+    # T001: if the loop ended because of `max_iterations` / evaluator stop, still
+    # log the budget record so the smoke log is self-describing.
+    _emit_budget('loop_end')
 
     # Learner's after_run hook.
     learner.call_hook('after_run')
