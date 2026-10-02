@@ -1,6 +1,18 @@
 from copy import deepcopy
+# T001 compatibility fix (root cause of `gym.error.NameNotFound: Environment
+# 'halfcheetah-medium-replay' doesn't exist`):
+# `d4rl` is what registers the D4RL gym ids, and `wrap_mujoco()` calls plain `gym.make(env_id)`.
+# DI-engine's mujoco env module never imports d4rl itself, so the ids are only registered if
+# something imports d4rl first. Import it explicitly, before ding, to make the dependency
+# explicit and order-independent. This is a pure import-ordering fix; it does not touch any
+# learning rule, dataset content or environment semantics.
+import d4rl  # noqa: F401  (side effect: registers the D4RL gym environments)
 from ding.entry import serial_pipeline_offline2online
-from d4rl import set_dataset_path
+# T001 compatibility fix: upstream had `from d4rl import set_dataset_path`. The SO2
+# setup.py itself pins d4rl to `Farama-Foundation/d4rl@master`, and that revision of
+# d4rl no longer exports `set_dataset_path` (it moved to Minari). The symbol was only
+# used by a commented-out line below, so the import is simply dropped. No behaviour
+# change: dataset location is still resolved by d4rl's own default (~/.d4rl/datasets).
 import os
 
 

@@ -1,7 +1,10 @@
 import torch
 import math
 from torch.nn.utils import clip_grad_norm_, clip_grad_value_
-from torch._six import inf
+# T001 compatibility fix: `torch._six` was removed in PyTorch 2.0. The only symbol used
+# here is `inf`, which is the plain float infinity (torch._six re-exported math.inf).
+# No numeric behaviour changes.
+from math import inf
 from typing import Union, Iterable, Tuple, Callable
 
 

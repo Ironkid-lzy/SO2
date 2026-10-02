@@ -43,9 +43,9 @@ def serial_pipeline_offline2online(
         - max_iterations (:obj:`Optional[torch.nn.Module]`): Learner's max iteration. Pipeline will stop \
             when reaching this iteration.
         - max_env_steps (:obj:`Optional[int]`): T001 explicit engineering stop budget. Total training \
-            environment steps INCLUDING `random_collect_size`. ``None`` keeps upstream behaviour \
-            (hard-coded stop at 150k policy env-steps). This only bounds *when* the loop stops; it does \
-            not change the learning rule.
+            environment steps as reported by ``collector.envstep`` (which already includes \
+            ``random_collect_size``). ``None`` keeps upstream behaviour (hard-coded stop at 150k policy \
+            env-steps). This only bounds *when* the loop stops; it does not change the learning rule.
         - max_wall_clock_sec (:obj:`Optional[float]`): T001 explicit engineering wall-clock stop budget \
             for the online loop. ``None`` disables the wall-clock bound.
     Returns:
@@ -111,7 +111,7 @@ def serial_pipeline_offline2online(
     def _budget_reason():
         if max_wall_clock_sec is not None and (time.time() - _budget_t0) >= max_wall_clock_sec:
             return 'wall_clock'
-        if max_env_steps is not None and (collector.envstep + cfg.policy.random_collect_size) >= max_env_steps:
+        if max_env_steps is not None and collector.envstep >= max_env_steps:
             return 'env_steps'
         return None
 
@@ -119,8 +119,11 @@ def serial_pipeline_offline2online(
         rec = {
             'event': 'budget_stop',
             'reason': reason,
-            'policy_envstep': int(collector.envstep),
-            'total_envstep_incl_random_collect': int(collector.envstep + cfg.policy.random_collect_size),
+            # `collector.envstep` counts every env interaction handled by the collector,
+            # including the random-collect phase (SampleSerialCollector increments
+            # `_total_envstep_count` in its transition loop). It therefore IS the total
+            # training env-step count; random_collect_size must not be added on top.
+            'collector_envstep_total': int(collector.envstep),
             'random_collect_size': int(cfg.policy.random_collect_size),
             'online_iterations': int(_online_steps),
             'learner_train_iter': int(learner.train_iter),

@@ -3,7 +3,9 @@ from typing import List, Dict, Union, Any
 
 import torch
 import re
-from torch._six import string_classes
+# T001 compatibility fix: `torch._six` was removed in PyTorch 2.0. Old torch defined
+# `string_classes = (str, bytes)`. Same semantics, no behaviour change.
+string_classes = (str, bytes)
 import collections.abc as container_abcs
 
 int_classes = int

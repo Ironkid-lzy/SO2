@@ -73,7 +73,11 @@ setup(
         'h5py',
         'markupsafe==2.0.1',
         'tqdm',
-        'Cython==3.0.0a10',
+        # T001 compatibility fix: upstream pinned 'Cython==3.0.0a10', which is no longer
+        # resolvable on PyPI (the 3.0.0a* pre-releases were removed). Cython is only a
+        # build-time dependency here; the SO2 algorithm code has no Cython extension.
+        # mujoco-py 2.1.2.14 requires Cython<3 to build, so allow the 0.29 line.
+        'Cython>=0.29.36,<3',
         'protobuf>=2.6, <3.20',
         'patchelf',
         'tensorboard',
