@@ -138,13 +138,18 @@ def main():
                 save(STATE, state)
                 raise RuntimeError(f"seed {seed} exited {exit_code}")
             accepted = subprocess.run([str(PYTHON), "scripts/repro/t003_accept.py", str(run_dir),
-                                       "--target", str(TARGET)], cwd=ROOT,
+                                       "--target", str(TARGET), "--log", str(log_path)], cwd=ROOT,
                                       stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
             (WORK / "logs" / f"seed{seed}_accept.log").write_text(accepted.stdout)
             if accepted.returncode:
                 state["seeds"][str(seed)]["status"] = "failed_acceptance"
                 save(STATE, state)
                 raise RuntimeError(f"seed {seed} failed technical acceptance")
+            meta = json.loads((run_dir / "run_meta.json").read_text())
+            if meta["git_commit"] != state["code_sha"] or meta["config_sha256"] != state["config_sha256"]:
+                state["seeds"][str(seed)]["status"] = "failed_version_check"
+                save(STATE, state)
+                raise RuntimeError(f"seed {seed} version mismatch")
             evidence(run_dir, seed)
             state["seeds"][str(seed)]["status"] = "completed"
             save(STATE, state)

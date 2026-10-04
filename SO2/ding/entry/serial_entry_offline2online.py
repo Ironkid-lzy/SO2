@@ -115,6 +115,7 @@ def serial_pipeline_offline2online(
     _timings = dict(collect=0.0, sample=0.0, learn=0.0, eval=0.0, save=0.0)
     _updates = dict(critic=0, actor=0, alpha=0)
     _evaluated_steps = set()
+    _eval_interactions = 0
     _initial_offline_count = offline_buffer.count()
     _initial_online_count = replay_buffer.count()
     _offline_capacity = offline_buffer.replay_buffer_size
@@ -138,6 +139,7 @@ def serial_pipeline_offline2online(
                              'push_count': offline_buffer.push_count,
                              'evictions': max(0, offline_buffer.push_count - _offline_capacity)},
             'initial_buffer_counts': {'online': _initial_online_count, 'mixed': _initial_offline_count},
+            'evaluation_interactions_total': _eval_interactions,
             'timings_sec': dict(_timings), 'wall_clock_sec': time.time() - _budget_t0,
         }
         print('[T002_STATE] ' + json.dumps(record), flush=True)
@@ -146,6 +148,7 @@ def serial_pipeline_offline2online(
                 f.write(json.dumps(record) + '\n')
 
     def _eval_now():
+        nonlocal _eval_interactions
         step = int(collector.envstep)
         if step in _evaluated_steps:
             return
@@ -164,11 +167,14 @@ def serial_pipeline_offline2online(
                 torch.cuda.set_rng_state_all(cuda_state)
         _timings['eval'] += time.perf_counter() - start
         assert len(returns) == eval_n_episode, (len(returns), eval_n_episode)
+        _eval_interactions += int(evaluator.last_envstep_count)
         import d4rl
         score = float(d4rl.get_normalized_score(cfg.env.env_id, float(reward)))
         record = {'event': 'evaluation', 'env_steps': step, 'learner_train_iter': int(learner.train_iter),
                   'episodes_requested': eval_n_episode, 'episodes_completed': len(returns),
                   'returns': returns, 'return_mean': float(reward),
+                  'evaluation_env_steps': int(evaluator.last_envstep_count),
+                  'evaluation_interactions_total': _eval_interactions,
                   'normalized_score': score, 'normalized_score_100': 100 * score,
                   'stop_value_reached': bool(stop_eval)}
         _evaluated_steps.add(step)

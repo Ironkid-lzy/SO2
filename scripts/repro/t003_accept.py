@@ -2,11 +2,12 @@
 import argparse
 import json
 import math
+import re
 from pathlib import Path
 import sys
 
 
-def check(run_dir, target):
+def check(run_dir, target, log_path=None):
     errors = []
     def expect(ok, message):
         if not ok:
@@ -22,6 +23,7 @@ def check(run_dir, target):
     expect(len(evaluations) == len(steps), "evaluation_count")
     expect([e["env_steps"] for e in evaluations] == steps, "evaluation_steps")
     for e in evaluations:
+        expect(e.get("evaluation_env_steps", 0) > 0, f"eval_interactions_{e['env_steps']}")
         expect(e["episodes_requested"] == e["episodes_completed"] == len(e["returns"]) == 20,
                f"episodes_{e['env_steps']}")
         expect(all(math.isfinite(float(x)) for x in e["returns"]), f"finite_returns_{e['env_steps']}")
@@ -41,6 +43,13 @@ def check(run_dir, target):
         expect(s["batch_size"] == 2560 and s["online_batch"] == 256 and s["mixed_buffer_batch"] == 2304,
                "batch_shape")
         expect(s["auto_alpha"] is False, "auto_alpha")
+        expect(s.get("evaluation_interactions_total") == sum(e.get("evaluation_env_steps", 0) for e in evaluations),
+               "evaluation_interactions_total")
+    if log_path is not None:
+        log = log_path.read_text(errors="replace")
+        value_lines = [line for line in log.splitlines() if line.startswith("| Value |")]
+        expect(not any(re.search(r"\b(?:nan|inf|infinity)\b", line, re.I) for line in value_lines), "nonfinite_training_log")
+        expect("out of memory" not in log.lower(), "oom_log")
     expect(reload["step"] == target and reload["equal_live_after"] and reload["equal_reloaded"], "policy_reload")
     expect(Path(reload["checkpoint_path"]).exists(), "checkpoint_missing")
     out = {"accepted": not errors, "errors": errors, "target_env_steps": target,
@@ -55,7 +64,8 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("run_dir", type=Path)
     ap.add_argument("--target", type=int, required=True)
+    ap.add_argument("--log", type=Path)
     args = ap.parse_args()
-    result = check(args.run_dir, args.target)
+    result = check(args.run_dir, args.target, args.log)
     print(json.dumps(result))
     sys.exit(0 if result["accepted"] else 1)

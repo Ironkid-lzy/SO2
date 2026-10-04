@@ -52,7 +52,7 @@ def main():
     main_cfg, create_cfg = frozen["main_config"], frozen["create_config"]
     checkpoint = ROOT / "_so2_work/assets/checkpoints/ckpt/halfcheetah-medium-replay-v2.ckpt"
     assert checkpoint.exists()
-    main_cfg.exp_name = str(args.run_dir.resolve())
+    main_cfg.exp_name = str(args.run_dir.resolve().relative_to(ROOT))
     main_cfg.policy.learn.max_env_steps = args.max_env_steps
     main_cfg.policy.learn.max_wall_clock_sec = args.max_wall_clock_sec
     main_cfg.policy.learn.learner.load_path = str(checkpoint)
