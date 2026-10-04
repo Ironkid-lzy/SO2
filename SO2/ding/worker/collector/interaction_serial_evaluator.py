@@ -206,6 +206,7 @@ class InteractionSerialEvaluator(ISerialEvaluator):
                     envstep_count += 1
         duration = self._timer.value
         episode_reward = eval_monitor.get_episode_reward()
+        self.last_episode_reward = [float(x) for x in episode_reward]
         info = {
             'train_iter': train_iter,
             'ckpt_name': 'iteration_{}.pth.tar'.format(train_iter),
