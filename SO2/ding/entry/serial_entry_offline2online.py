@@ -32,6 +32,7 @@ def serial_pipeline_offline2online(
         eval_env_step_interval: Optional[int] = None,
         eval_n_episode: Optional[int] = None,
         metrics_path: Optional[str] = None,
+        policy_probe_path: Optional[str] = None,
 ) -> 'Policy':  # noqa
     """
     Overview:
@@ -175,6 +176,12 @@ def serial_pipeline_offline2online(
         if metrics_path:
             with open(metrics_path, 'a') as f:
                 f.write(json.dumps(record) + '\n')
+        if policy_probe_path:
+            obs = torch.linspace(-1, 1, int(cfg.policy.model.obs_shape))
+            action = torch.as_tensor(policy._forward_eval({0: obs})[0]['action']).detach().cpu()
+            with open(policy_probe_path, 'a') as f:
+                f.write(json.dumps({'env_steps': step, 'observation': obs.tolist(),
+                                    'live_action_before_save': action.tolist()}) + '\n')
         save_start = time.perf_counter()
         learner.save_checkpoint('envstep_%d.pth.tar' % step)
         _timings['save'] += time.perf_counter() - save_start
