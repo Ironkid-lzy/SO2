@@ -1,0 +1,13 @@
+# T001 local engineering workspace: helper scripts, downloads, run outputs.
+# Nothing here is part of the algorithm code and it is not meant to be pushed.
+# All T001 artifacts now live under this single directory:
+#   _so2_work/{scripts,assets,runs,logs}/
+_so2_work/
+
+# Python bytecode produced by importing the in-repo SO2 package.
+__pycache__/
+*.pyc
+
+# Isolated environment for this checkout. Project convention is to keep the venv
+# in the project root (`<project>/.venv`), never inside a shared ~/venvs directory.
+.venv/

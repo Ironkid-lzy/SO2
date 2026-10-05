@@ -1,5 +1,7 @@
 # SO2: A Perspective of Q-value Estimation on Offline-to-Online Reinforcement Learning
 
+> **本 fork 已验收的基线：** [EXP-015 版本、结果与运行说明](BASELINE.md)。正式入口为 `scripts/repro/t003_run.py`，精确训练版本见 tag `so2-baseline-exp015`。以下保留上游说明，环境重建请优先使用基线文档中的已验证版本。
+
 **SO2 offers a fresh perspective on offline-to-online reinforcement learning through Q-value estimation and presents a straightforward yet effective implementation.**
 
 ![](assets/SO2.png)
@@ -10,20 +12,15 @@
 
 ## Updates
 
-- (06/2024) Independent code has been released!
-- (12/2023) Code has been released!
+- (12/2024) Code has been released!
 
-## Recommended reproduction workflow
-
-Considering the difficulty of tracking the main branch in the DI-engine updates, we have updated the independent code branch to reproduce the results in the paper.
-
-You can check the details in the [code branch](https://github.com/opendilab/SO2/tree/code).
-
-Checkpoints can be downloaded from the following links: [Google Drive](https://drive.google.com/file/d/1ShHXQw2ox3F-9WKLOZo8Qnjn0mEtaQdl/view?usp=drive_link)
+## Installation
 
 ### All scripts
 
 The scripts from installation to execution are all here👏.
+
+Checkpoints can be downloaded from the following links: [Google Drive](https://drive.google.com/file/d/1ShHXQw2ox3F-9WKLOZo8Qnjn0mEtaQdl/view?usp=drive_link)
 
 ```
 # install MuJoCo for Linux
@@ -44,31 +41,6 @@ pip install -e SO2
 # run d4rl experiment
 # Note download checkpoints and unzip into ckpt folder
 python3 -u train.py 
-```
-
-## Installation
-
-### All scripts
-
-The scripts from installation to execution are all here👏.
-
-```
-# install MuJoCo for Linux
-mkdir -p ~/.mujoco/mujoco210 
-wget https://mujoco.org/download/mujoco210-macos-x86_64.tar.gz -O mujoco210-macos-x86_64.tar.gz
-tar -xf mujoco210-linux-x86_64.tar.gz -C ~/.mujoco/mujoco210 
-pip install -U 'mujoco-py<2.2,>=2.1'
-
-# install D4RL
-pip install git+https://github.com/Farama-Foundation/d4rl@master#egg=d4rl
-
-# install SO2
-git clone https://github.com/opendilab/SO2
-cd SO2
-pip install -r requirements.txt
-
-# run d4rl experiment
-python3 -u so2/d4rl_main.py
 ```
 
 ### Install environment
@@ -103,9 +75,8 @@ pip install git+https://github.com/Farama-Foundation/d4rl@master#egg=d4rl
 #### Install SO2
 
 ```
-git clone https://github.com/opendilab/SO2
-cd SO2
-pip install -r requirements.txt
+git clone https://github.com/opendilab/SO2@code
+pip install -e SO2
 ```
 
 ## Getting Started
