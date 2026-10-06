@@ -468,39 +468,47 @@ class EDACPolicy(Policy):
         return ret
 
     def _load_state_dict_learn(self, state_dict: Dict[str, Any]) -> None:
-        try:
-            state_dict['policy']={}
-            state_dict['policy']['0.weight'                ] = state_dict['trainer/policy']['fc0.weight'            ]
-            state_dict['policy']['0.bias'                  ] = state_dict['trainer/policy']['fc0.bias'              ]
-            state_dict['policy']['2.main.0.weight'         ] = state_dict['trainer/policy']['fc1.weight'            ]
-            state_dict['policy']['2.main.0.bias'           ] = state_dict['trainer/policy']['fc1.bias'              ]
-            state_dict['policy']['2.main.2.weight'         ] = state_dict['trainer/policy']['fc2.weight'            ]
-            state_dict['policy']['2.main.2.bias'           ] = state_dict['trainer/policy']['fc2.bias'              ]
-            state_dict['policy']['2.mu.weight'             ] = state_dict['trainer/policy']['last_fc.weight'        ]
-            state_dict['policy']['2.mu.bias'               ] = state_dict['trainer/policy']['last_fc.bias'          ]
-            state_dict['policy']['2.log_sigma_layer.weight'] = state_dict['trainer/policy']['last_fc_log_std.weight']
-            state_dict['policy']['2.log_sigma_layer.bias'  ] = state_dict['trainer/policy']['last_fc_log_std.bias'  ]
+        if 'trainer/policy' not in state_dict:
+            assert {'model', 'target_model'} <= set(state_dict)
+            self._learn_model.load_state_dict(state_dict['model'], strict=True)
+            self._target_model.load_state_dict(state_dict['target_model'], strict=True)
+            return
 
-            for key in state_dict['trainer/qfs']:
-                state_dict['trainer/qfs'][key]=state_dict['trainer/qfs'][key][:self._cfg.model.critic_ensemble_size]
-            for key in state_dict['trainer/target_qfs']:
-                state_dict['trainer/target_qfs'][key]=state_dict['trainer/target_qfs'][key][:self._cfg.model.critic_ensemble_size]
+        # Author checkpoint migration: all actor and linear critic keys are required.
+        # Only new LayerNorm affine tensors keep their initialization.
+        source_actor = state_dict['trainer/policy']
+        actor_map = {
+            '0.weight': 'fc0.weight', '0.bias': 'fc0.bias',
+            '2.main.0.weight': 'fc1.weight', '2.main.0.bias': 'fc1.bias',
+            '2.main.2.weight': 'fc2.weight', '2.main.2.bias': 'fc2.bias',
+            '2.mu.weight': 'last_fc.weight', '2.mu.bias': 'last_fc.bias',
+            '2.log_sigma_layer.weight': 'last_fc_log_std.weight',
+            '2.log_sigma_layer.bias': 'last_fc_log_std.bias',
+        }
+        actor = {dst: source_actor[src].clone() for dst, src in actor_map.items()}
+        assert set(actor) == set(self._learn_model.actor.state_dict())
+        self._learn_model.actor.load_state_dict(actor, strict=True)
+        self._target_model.actor.load_state_dict(actor, strict=True)
 
-            self._learn_model.actor.load_state_dict(state_dict['policy'])
-            if not self._proxy_network:
-                self._learn_model.critic.load_state_dict(state_dict['trainer/qfs'])
-            self._target_model.actor.load_state_dict(state_dict['policy'])
-            if not self._proxy_network:
-                self._target_model.critic.load_state_dict(state_dict['trainer/target_qfs'])
-        except Exception as e:
-            self._learn_model.load_state_dict(state_dict['model'])
-            self._target_model.load_state_dict(state_dict['target_model'])
-        # self._log_alpha=state_dict['trainer/log_alpha']
+        def load_critic(module, source):
+            current = module.state_dict()
+            linear_keys = {key for key in current if key.startswith('fc') or key.startswith('last_fc')}
+            ln_keys = set(current) - linear_keys
+            assert all(key.startswith(('layer_norm_weights.', 'layer_norm_biases.')) for key in ln_keys)
+            assert set(source) == linear_keys, (set(source) - linear_keys, linear_keys - set(source))
+            count = self._cfg.model.critic_ensemble_size
+            mapped = {}
+            for key in sorted(linear_keys):
+                assert source[key].shape[0] >= count
+                sliced = source[key][:count].clone()
+                assert sliced.shape == current[key].shape, (key, sliced.shape, current[key].shape)
+                mapped[key] = sliced
+            mapped.update({key: current[key] for key in ln_keys})
+            module.load_state_dict(mapped, strict=True)
 
-        # self._optimizer_q.load_state_dict(state_dict['trainer/qfs_optim'])
-        # self._optimizer_policy.load_state_dict(state_dict['trainer/policy_optim'])
-        # if self._auto_alpha:
-        #     self._alpha_optim.load_state_dict(state_dict['trainer/alpha_optim'])
+        if not self._proxy_network:
+            load_critic(self._learn_model.critic, state_dict['trainer/qfs'])
+            load_critic(self._target_model.critic, state_dict['trainer/target_qfs'])
 
     def _init_collect(self) -> None:
         r"""

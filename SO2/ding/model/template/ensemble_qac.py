@@ -28,6 +28,8 @@ class ENSEMBLEQAC(nn.Module):
             actor_head_layer_num: int = 2,
             critic_head_hidden_size: int = 64,
             critic_ensemble_size: int = 2,
+            critic_layer_norm: bool = False,
+            critic_dropout_rate: float = 0.0,
             activation: Optional[nn.Module] = nn.ReLU(),
             norm_type: Optional[str] = None,
     ) -> None:
@@ -92,6 +94,8 @@ class ENSEMBLEQAC(nn.Module):
             layer_norm=None,
             batch_norm=False,
             final_init_scale=None,
+            use_layer_norm=critic_layer_norm,
+            dropout_rate=critic_dropout_rate,
         )
 
     def forward(self, inputs: Union[torch.Tensor, Dict], mode: str) -> Dict:
@@ -350,8 +354,13 @@ class ParallelizedEnsembleFlattenMLP(nn.Module):
             layer_norm=None,
             batch_norm=False,
             final_init_scale=None,
+            use_layer_norm=False,
+            dropout_rate=0.0,
     ):
         super().__init__()
+        assert 0.0 <= dropout_rate < 1.0
+        self.use_layer_norm = use_layer_norm
+        self.dropout_rate = dropout_rate
 
         self.ensemble_size = ensemble_size
         self.input_size = input_size
@@ -385,6 +394,16 @@ class ParallelizedEnsembleFlattenMLP(nn.Module):
             self.fcs.append(fc)
             in_size = next_size
 
+        # DroQ OriginalREDQCodebase/core.py: Linear -> Dropout -> LayerNorm -> ReLU.
+        # Each critic head and hidden layer has independent affine parameters.
+        if self.use_layer_norm:
+            self.layer_norm_weights = nn.ParameterList([
+                nn.Parameter(torch.ones(ensemble_size, 1, size)) for size in hidden_sizes
+            ])
+            self.layer_norm_biases = nn.ParameterList([
+                nn.Parameter(torch.zeros(ensemble_size, 1, size)) for size in hidden_sizes
+            ])
+
         self.last_fc = ParallelizedLayerMLP(
             ensemble_size=ensemble_size,
             input_dim=in_size,
@@ -416,11 +435,19 @@ class ParallelizedEnsembleFlattenMLP(nn.Module):
         h = flat_inputs
 
         # standard feedforward network
-        for _, fc in enumerate(self.fcs):
+        for i, fc in enumerate(self.fcs):
             h = fc(h, self.num_q)
-            h = self.hidden_activation(h)
-            if hasattr(self, 'layer_norm') and (self.layer_norm is not None):
-                h = self.layer_norm(h)
+            if self.use_layer_norm or self.dropout_rate:
+                h = F.dropout(h, p=self.dropout_rate, training=self.training)
+                if self.use_layer_norm:
+                    h = F.layer_norm(h, (h.shape[-1],))
+                    h = h * self.layer_norm_weights[i] + self.layer_norm_biases[i]
+                h = self.hidden_activation(h)
+            else:
+                # Preserve the baseline N=10/LN-off/p=0 path.
+                h = self.hidden_activation(h)
+                if self.layer_norm is not None:
+                    h = self.layer_norm(h)
         preactivation = self.last_fc(h, self.num_q)
         output = self.output_activation(preactivation)
 
