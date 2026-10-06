@@ -218,6 +218,7 @@ def main():
         raise RuntimeError("algorithm worktree is dirty; code/config must be frozen and pushed")
     if not subprocess.check_output(["git", "status", "--porcelain"], cwd=RESEARCH, text=True).strip() == "":
         raise RuntimeError("delivery worktree is dirty; frozen registration must be committed")
+    WORK.parent.mkdir(parents=True, exist_ok=True)
     WORK.mkdir(parents=True, exist_ok=False)
     fd = os.open(LOCK, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
     os.write(fd, str(os.getpid()).encode())
