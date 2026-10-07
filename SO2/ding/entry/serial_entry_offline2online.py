@@ -33,6 +33,7 @@ def serial_pipeline_offline2online(
         eval_n_episode: Optional[int] = None,
         metrics_path: Optional[str] = None,
         policy_probe_path: Optional[str] = None,
+        rng_snapshot_dir: Optional[str] = None,
 ) -> 'Policy':  # noqa
     """
     Overview:
@@ -146,6 +147,23 @@ def serial_pipeline_offline2online(
         if metrics_path:
             with open(metrics_path, 'a') as f:
                 f.write(json.dumps(record) + '\n')
+
+        if rng_snapshot_dir and event == 'evaluation_state':
+            os.makedirs(rng_snapshot_dir, exist_ok=True)
+            np_name, np_keys, np_pos, np_gauss, np_cached = np.random.get_state()
+            rng = {
+                'env_steps': int(collector.envstep),
+                'python': random.getstate(),
+                'numpy': {'algorithm': np_name, 'keys': np_keys.tolist(), 'position': int(np_pos),
+                          'has_gauss': int(np_gauss), 'cached_gaussian': float(np_cached)},
+                'torch_cpu': torch.get_rng_state().tolist(),
+                'torch_cuda': [state.tolist() for state in torch.cuda.get_rng_state_all()] if cfg.policy.cuda else [],
+            }
+            path = os.path.join(rng_snapshot_dir, 'envstep_%d.json' % int(collector.envstep))
+            tmp = path + '.tmp'
+            with open(tmp, 'w') as f:
+                json.dump(rng, f, separators=(',', ':'))
+            os.replace(tmp, path)
 
     def _eval_now():
         nonlocal _eval_interactions
