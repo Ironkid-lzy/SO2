@@ -1,0 +1,89 @@
+{
+  "timestamp": "2026-10-07T17:25:32.024250",
+  "os": {
+    "system": "Linux",
+    "release": "6.8.0-124-generic",
+    "version": "#124~22.04.1-Ubuntu SMP PREEMPT_DYNAMIC Tue May 26 21:05:19 UTC ",
+    "machine": "x86_64",
+    "python_version": "3.10.12"
+  },
+  "cpu": {
+    "physical_cores": 20,
+    "logical_cores": 20,
+    "max_frequency_mhz": 6360.0,
+    "architecture": "x86_64",
+    "processor": "x86_64",
+    "current_frequency_mhz": 2.2231499999999986
+  },
+  "memory": {
+    "total_gb": 15.08,
+    "available_gb": 8.73,
+    "used_gb": 5.78,
+    "percent_used": 42.1,
+    "swap_total_gb": 12.0,
+    "swap_available_gb": 9.5
+  },
+  "disk": {
+    "path": "/home/lzy/Projects/SO2_t007",
+    "total_gb": 252.44,
+    "available_gb": 114.53,
+    "used_gb": 125.04,
+    "percent_used": 52.2
+  },
+  "gpu": {
+    "nvidia_gpus": [
+      {
+        "index": 0,
+        "name": "NVIDIA GeForce RTX 5060 Laptop GPU",
+        "memory_total_mb": 8151.0,
+        "memory_free_mb": 7132.0,
+        "driver_version": "570.211.01",
+        "compute_capability": "12.0",
+        "type": "NVIDIA",
+        "backend": "CUDA"
+      }
+    ],
+    "amd_gpus": [],
+    "apple_silicon": null,
+    "total_gpus": 1,
+    "available_backends": [
+      "CUDA"
+    ]
+  },
+  "recommendations": {
+    "parallel_processing": {
+      "strategy": "high_parallelism",
+      "suggested_workers": 18,
+      "libraries": [
+        "joblib",
+        "multiprocessing",
+        "dask"
+      ]
+    },
+    "memory_strategy": {
+      "strategy": "moderate_memory",
+      "libraries": [
+        "dask",
+        "zarr"
+      ],
+      "note": "Consider chunking for datasets > 2GB"
+    },
+    "gpu_acceleration": {
+      "available": true,
+      "backends": [
+        "CUDA"
+      ],
+      "suggested_libraries": [
+        "pytorch",
+        "tensorflow",
+        "jax",
+        "cupy",
+        "rapids"
+      ]
+    },
+    "large_data_handling": {
+      "strategy": "disk_abundant",
+      "note": "Sufficient space for large intermediate files"
+    }
+  }
+}
