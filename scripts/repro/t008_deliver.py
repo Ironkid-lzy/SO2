@@ -1,4 +1,4 @@
-import argparse,csv,json,math,statistics,subprocess,shutil
+import argparse,csv,json,math,statistics,subprocess,shutil,hashlib
 from pathlib import Path
 import numpy as np
 R=Path("/home/lzy/Projects/rl_sample_efficiency_research_t008"); A=Path("/home/lzy/Projects/SO2_t008"); W=A/"_so2_work/runs/EXP-019"; steps=list(range(0,100001,2500))
@@ -22,6 +22,12 @@ def main():
   rows.append(z)
  P=R/"results/processed"; P.mkdir(exist_ok=True)
  with (P/"EXP-019-per-seed.csv").open("w",newline="") as f: w=csv.DictWriter(f,fieldnames=list(rows[0])); w.writeheader(); w.writerows(rows)
+ cols={"env_steps":steps}
+ for g in "ABCD":
+  ss=[s for s in range(5) if (g,s) in c]; m=np.asarray([c[g,s] for s in ss])
+  for i,s in enumerate(ss): cols[f"{g}_seed{s}"]=m[i].tolist()
+  cols[g+"_mean"]=m.mean(0).tolist(); cols[g+"_std_sample"]=m.std(0,ddof=1).tolist() if len(ss)>1 else [None]*41
+ with (P/"EXP-019-curves.csv").open("w",newline="") as f: w=csv.writer(f); w.writerow(cols.keys()); w.writerows(zip(*cols.values()))
  agg={k:stats([z[k] for z in rows if z["C_status"]=="accepted"]) for k in ["C_endpoint","C_auc","C_minus_D_endpoint","C_minus_B_endpoint","C_minus_D_auc","C_minus_B_auc"]}
  (P/"EXP-019-summary.json").write_text(json.dumps({"status":"completed" if complete else "partial","accepted":done,"missing":sorted(set(range(5))-set(done)),"per_seed":rows,"aggregate":agg,"code_sha":state["code_sha"]},indent=2)+"\n")
  import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
@@ -31,9 +37,22 @@ def main():
   if len(ss)>1: ax.fill_between(steps,m.mean(0)-m.std(0,ddof=1),m.mean(0)+m.std(0,ddof=1),alpha=.15)
  ax.set_xlabel("training environment steps"); ax.set_ylabel("normalized score x 100"); ax.legend(); fig.tight_layout(); F=R/"results/figures"; F.mkdir(exist_ok=True); fig.savefig(F/"EXP-019.png",dpi=180); plt.close(fig)
  raw=R/"results/raw/EXP-019"; raw.mkdir(parents=True,exist_ok=True)
+ evd=R/"reports/so2/SO2-T008"; evd.mkdir(parents=True,exist_ok=True)
+ for srcfile in [A/"_so2_work/validation/EXP-019/preflight.json",A/"_so2_work/validation/EXP-019/t008_fixed_batch.json"]:
+  shutil.copy2(srcfile,evd/srcfile.name)
  for s in done:
   src=W/f"EXP-019-s{s}-attempt1"; dst=raw/src.name
   if not dst.exists(): shutil.copytree(src,dst,ignore=shutil.ignore_patterns("ckpt"))
+  for name in [f"seed{s}.log",f"seed{s}_acceptance.log",f"seed{s}_first_learning_check.json"]:
+   if (W/name).exists(): shutil.copy2(W/name,dst/name)
+  manifest=[]
+  for item in [W/f"seed{s}.log",*sorted((src/"ckpt").glob("*.pth.tar"))]:
+   if item.exists():
+    h=hashlib.sha256()
+    with item.open("rb") as stream:
+     for block in iter(lambda:stream.read(1<<20),b""): h.update(block)
+    manifest.append({"path":str(item.resolve()),"size_bytes":item.stat().st_size,"sha256":h.hexdigest()})
+  (dst/"artifact_manifest.json").write_text(json.dumps(manifest,indent=2)+"\n")
   (dst/"large_artifact_location.txt").write_text(str(src)+"\n")
  (raw/"queue_state.json").write_text(json.dumps(state,indent=2)+"\n")
  report=f"""# SO2-T008：仅 LayerNorm 的 2Q 对照
@@ -59,7 +78,7 @@ AUC为归一化分数梯形积分除以100000；汇总mean和样本SD见summary 
  (R/"reports/so2/SO2-T008.md").write_text(report)
  with (R/"docs/EXPERIMENT_TRACKER.md").open("a") as f: f.write("\n\n## EXP-019 — SO2-T008 C group\n\n| Run | Seed | Status | Endpoint | AUC |\n|---|---:|---|---:|---:|\n"+"".join(f"| EXP-019-s{x['seed']}-attempt1 | {x['seed']} | {x['C_status']} | {x['C_endpoint']} | {x['C_auc']} |\n" for x in rows))
  with (R/"docs/RESEARCH_LOG.md").open("a") as f: f.write(f"\n\n### 2026-10-08 EXP-019 / SO2-T008: {'completed' if complete else 'partial'}\n\nC accepted {done}; C-D tests dropout increment with LN; C-B also reflects changed pretrained Q initialization. No true-Q-error or interaction claim. See reports/so2/SO2-T008.md.\n")
- for x in ["docs/EXPERIMENT_TRACKER.md","docs/RESEARCH_LOG.md","reports/so2/SO2-T008.md","results/processed/EXP-019-per-seed.csv","results/processed/EXP-019-summary.json","results/figures/EXP-019.png"]: subprocess.check_call(["git","add",x],cwd=R)
+ for x in ["docs/EXPERIMENT_TRACKER.md","docs/RESEARCH_LOG.md","reports/so2/SO2-T008.md","results/processed/EXP-019-per-seed.csv","results/processed/EXP-019-curves.csv","results/processed/EXP-019-summary.json","results/figures/EXP-019.png"]: subprocess.check_call(["git","add",x],cwd=R)
  subprocess.check_call(["git","add","-f","results/raw/EXP-019"],cwd=R); subprocess.check_call(["git","commit","-m","EXP-019: deliver T008"],cwd=R); subprocess.check_call(["git","push","origin","codex/so2-t008-delivery"],cwd=R)
  print(json.dumps({"status":"completed" if complete else "partial","accepted":done,"research_sha":subprocess.check_output(["git","rev-parse","HEAD"],cwd=R,text=True).strip()}))
 if __name__=="__main__": main()
