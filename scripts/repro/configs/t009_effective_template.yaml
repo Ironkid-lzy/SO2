@@ -1,0 +1,137 @@
+actor_q_aggregation: min
+dropout_p: 0.005
+main_config:
+  env:
+    collector_env_num: 1
+    env_id: halfcheetah-medium-replay-v2
+    evaluator_env_num: 8
+    import_names:
+    - dizoo.mujoco.envs.mujoco_env
+    manager:
+      auto_reset: true
+      cfg_type: BaseEnvManagerDict
+      episode_num: .inf
+      max_retry: 1
+      reset_timeout: 60
+      retry_waiting_time: 0.1
+      step_timeout: 60
+      type: base
+    n_evaluator_episode: 8
+    norm_obs:
+      use_norm: false
+    norm_reward:
+      use_norm: false
+    stop_value: 20000
+    type: mujoco
+    use_act_scale: true
+  exp_name: _so2_work/runs/EXP-019-template
+  policy:
+    cfg_type: EDACCommandModePolicyDict
+    collect:
+      collector:
+        cfg_type: SampleSerialCollectorDict
+        collect_print_freq: 100
+        deepcopy_obs: false
+        transform_obs: false
+        type: sample
+      data_path: null
+      data_type: d4rl
+      n_sample: 1
+      unroll_len: 1
+    command: {}
+    cuda: true
+    eval:
+      evaluator:
+        cfg_type: InteractionSerialEvaluatorDict
+        eval_freq: 2500
+        n_episode: 8
+        n_evaluator_episode: 20
+        stop_value: 20000
+    import_names:
+    - ding.policy.edac
+    learn:
+      actor_q_aggregation: min
+      actor_update_freq: 10
+      alpha: 0.2
+      auto_alpha: false
+      batch_size: 256
+      concat_online_ratio: 0.1
+      discount_factor: 0.99
+      dropout_p: 0.005
+      ignore_done: true
+      init_w: 0.003
+      learner:
+        cfg_type: BaseLearnerDict
+        dataloader:
+          num_workers: 0
+        hook:
+          load_ckpt_before_run: _so2_work/assets/checkpoints/ckpt/halfcheetah-medium-replay-v2.ckpt
+          log_show_after_iter: 1000
+          save_ckpt_after_iter: 10000000000
+          save_ckpt_after_run: true
+        load_path: _so2_work/assets/checkpoints/ckpt/halfcheetah-medium-replay-v2.ckpt
+        train_iterations: 1000000000
+      learning_rate_alpha: 0.0003
+      learning_rate_policy: 0.001
+      learning_rate_q: 0.001
+      learning_rate_value: 0.0003
+      log_space: true
+      max_env_steps: 100000
+      max_wall_clock_sec: 28800.0
+      multi_gpu: false
+      noise: true
+      noise_range:
+        max: 0.6
+        min: -0.6
+      noise_sigma: 0.3
+      offline_data_ratio: 1
+      offline_pretrain_iterations: 0
+      online: false
+      online_pretrain_iterations: 0
+      online_ratio: 0.5
+      reparameterization: true
+      target_theta: 0.005
+      update_per_collect: 10
+      without_timeouts_done: true
+    model:
+      action_shape: 6
+      actor_head_hidden_size: 256
+      actor_head_type: reparameterization
+      critic_dropout_rate: 0.005
+      critic_ensemble_size: 2
+      critic_head_hidden_size: 256
+      critic_layer_norm: true
+      obs_shape: 17
+      twin_critic: true
+    on_policy: false
+    other:
+      commander:
+        cfg_type: BaseSerialCommanderDict
+      replay_buffer:
+        alpha: 0.6
+        anneal_step: 100000
+        beta: 0.4
+        cfg_type: AdvancedReplayBufferDict
+        deepcopy: false
+        enable_track_used_data: false
+        max_staleness: .inf
+        max_use: .inf
+        monitor:
+          periodic_thruput:
+            seconds: 60
+          sampled_data_attr:
+            average_range: 5
+            print_freq: 200
+        replay_buffer_size: 1000000
+        thruput_controller:
+          push_sample_rate_limit:
+            max: .inf
+            min: 0
+          sample_min_limit_ratio: 1
+          window_seconds: 30
+        type: naive
+    priority: false
+    priority_IS_weight: false
+    random_collect_size: 5000
+    type: edac
+  seed: 0

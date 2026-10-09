@@ -1,0 +1,299 @@
+{
+  "schedule": [
+    {
+      "aggregation": "mean",
+      "cell_id": "mean-p0-s0",
+      "p": 0.0,
+      "reuse": null,
+      "seed": 0
+    },
+    {
+      "aggregation": "mean",
+      "cell_id": "mean-p0.005-s0",
+      "p": 0.005,
+      "reuse": null,
+      "seed": 0
+    },
+    {
+      "aggregation": "mean",
+      "cell_id": "mean-p0-s1",
+      "p": 0.0,
+      "reuse": null,
+      "seed": 1
+    },
+    {
+      "aggregation": "mean",
+      "cell_id": "mean-p0.005-s1",
+      "p": 0.005,
+      "reuse": null,
+      "seed": 1
+    },
+    {
+      "aggregation": "mean",
+      "cell_id": "mean-p0-s2",
+      "p": 0.0,
+      "reuse": null,
+      "seed": 2
+    },
+    {
+      "aggregation": "mean",
+      "cell_id": "mean-p0.005-s2",
+      "p": 0.005,
+      "reuse": null,
+      "seed": 2
+    },
+    {
+      "aggregation": "min",
+      "cell_id": "min-p0-s0",
+      "p": 0.0,
+      "reuse": "EXP-019",
+      "seed": 0
+    },
+    {
+      "aggregation": "min",
+      "cell_id": "min-p0-s1",
+      "p": 0.0,
+      "reuse": "EXP-019",
+      "seed": 1
+    },
+    {
+      "aggregation": "min",
+      "cell_id": "min-p0-s2",
+      "p": 0.0,
+      "reuse": "EXP-019",
+      "seed": 2
+    },
+    {
+      "aggregation": "min",
+      "cell_id": "min-p0.005-s0",
+      "p": 0.005,
+      "reuse": "EXP-016",
+      "seed": 0
+    },
+    {
+      "aggregation": "min",
+      "cell_id": "min-p0.005-s1",
+      "p": 0.005,
+      "reuse": "EXP-018",
+      "seed": 1
+    },
+    {
+      "aggregation": "min",
+      "cell_id": "min-p0.005-s2",
+      "p": 0.005,
+      "reuse": "EXP-018",
+      "seed": 2
+    },
+    {
+      "aggregation": "mean",
+      "cell_id": "mean-p0.1-s0",
+      "p": 0.1,
+      "reuse": null,
+      "seed": 0
+    },
+    {
+      "aggregation": "min",
+      "cell_id": "min-p0.001-s0",
+      "p": 0.001,
+      "reuse": null,
+      "seed": 0
+    },
+    {
+      "aggregation": "min",
+      "cell_id": "min-p0.0001-s0",
+      "p": 0.0001,
+      "reuse": null,
+      "seed": 0
+    },
+    {
+      "aggregation": "min",
+      "cell_id": "min-p0.1-s0",
+      "p": 0.1,
+      "reuse": null,
+      "seed": 0
+    },
+    {
+      "aggregation": "mean",
+      "cell_id": "mean-p0.001-s0",
+      "p": 0.001,
+      "reuse": null,
+      "seed": 0
+    },
+    {
+      "aggregation": "mean",
+      "cell_id": "mean-p0.0001-s0",
+      "p": 0.0001,
+      "reuse": null,
+      "seed": 0
+    },
+    {
+      "aggregation": "min",
+      "cell_id": "min-p0.05-s0",
+      "p": 0.05,
+      "reuse": null,
+      "seed": 0
+    },
+    {
+      "aggregation": "mean",
+      "cell_id": "mean-p0.01-s0",
+      "p": 0.01,
+      "reuse": null,
+      "seed": 0
+    },
+    {
+      "aggregation": "min",
+      "cell_id": "min-p0.01-s0",
+      "p": 0.01,
+      "reuse": null,
+      "seed": 0
+    },
+    {
+      "aggregation": "mean",
+      "cell_id": "mean-p0.05-s0",
+      "p": 0.05,
+      "reuse": null,
+      "seed": 0
+    },
+    {
+      "aggregation": "mean",
+      "cell_id": "mean-p0.0001-s1",
+      "p": 0.0001,
+      "reuse": null,
+      "seed": 1
+    },
+    {
+      "aggregation": "min",
+      "cell_id": "min-p0.0001-s1",
+      "p": 0.0001,
+      "reuse": null,
+      "seed": 1
+    },
+    {
+      "aggregation": "mean",
+      "cell_id": "mean-p0.001-s1",
+      "p": 0.001,
+      "reuse": null,
+      "seed": 1
+    },
+    {
+      "aggregation": "mean",
+      "cell_id": "mean-p0.05-s1",
+      "p": 0.05,
+      "reuse": null,
+      "seed": 1
+    },
+    {
+      "aggregation": "min",
+      "cell_id": "min-p0.1-s1",
+      "p": 0.1,
+      "reuse": null,
+      "seed": 1
+    },
+    {
+      "aggregation": "min",
+      "cell_id": "min-p0.001-s1",
+      "p": 0.001,
+      "reuse": null,
+      "seed": 1
+    },
+    {
+      "aggregation": "mean",
+      "cell_id": "mean-p0.01-s1",
+      "p": 0.01,
+      "reuse": null,
+      "seed": 1
+    },
+    {
+      "aggregation": "min",
+      "cell_id": "min-p0.05-s1",
+      "p": 0.05,
+      "reuse": null,
+      "seed": 1
+    },
+    {
+      "aggregation": "mean",
+      "cell_id": "mean-p0.1-s1",
+      "p": 0.1,
+      "reuse": null,
+      "seed": 1
+    },
+    {
+      "aggregation": "min",
+      "cell_id": "min-p0.01-s1",
+      "p": 0.01,
+      "reuse": null,
+      "seed": 1
+    },
+    {
+      "aggregation": "mean",
+      "cell_id": "mean-p0.01-s2",
+      "p": 0.01,
+      "reuse": null,
+      "seed": 2
+    },
+    {
+      "aggregation": "min",
+      "cell_id": "min-p0.0001-s2",
+      "p": 0.0001,
+      "reuse": null,
+      "seed": 2
+    },
+    {
+      "aggregation": "min",
+      "cell_id": "min-p0.1-s2",
+      "p": 0.1,
+      "reuse": null,
+      "seed": 2
+    },
+    {
+      "aggregation": "mean",
+      "cell_id": "mean-p0.1-s2",
+      "p": 0.1,
+      "reuse": null,
+      "seed": 2
+    },
+    {
+      "aggregation": "min",
+      "cell_id": "min-p0.001-s2",
+      "p": 0.001,
+      "reuse": null,
+      "seed": 2
+    },
+    {
+      "aggregation": "mean",
+      "cell_id": "mean-p0.001-s2",
+      "p": 0.001,
+      "reuse": null,
+      "seed": 2
+    },
+    {
+      "aggregation": "mean",
+      "cell_id": "mean-p0.05-s2",
+      "p": 0.05,
+      "reuse": null,
+      "seed": 2
+    },
+    {
+      "aggregation": "min",
+      "cell_id": "min-p0.01-s2",
+      "p": 0.01,
+      "reuse": null,
+      "seed": 2
+    },
+    {
+      "aggregation": "min",
+      "cell_id": "min-p0.05-s2",
+      "p": 0.05,
+      "reuse": null,
+      "seed": 2
+    },
+    {
+      "aggregation": "mean",
+      "cell_id": "mean-p0.0001-s2",
+      "p": 0.0001,
+      "reuse": null,
+      "seed": 2
+    }
+  ],
+  "seed": 20261009
+}

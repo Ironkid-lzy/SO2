@@ -105,6 +105,7 @@ class EDACPolicy(Policy):
             update_per_collect=1,
             # (int) Minibatch size for gradient descent.
             batch_size=256,
+            actor_q_aggregation='min',
 
             # (float type) learning_rate_q: Learning rate for soft q network.
             # Default to 3e-4.
@@ -288,8 +289,18 @@ class EDACPolicy(Policy):
         self._learn_model.reset()
         self._target_model.reset()
 
+        self._actor_q_aggregation = self._cfg.learn.get("actor_q_aggregation", "min")
+        if self._actor_q_aggregation not in ("min", "mean"):
+            raise ValueError("learn.actor_q_aggregation must be min or mean")
         self._forward_learn_cnt = 0
 
+    @staticmethod
+    def _aggregate_actor_q(q_values: torch.Tensor, aggregation: str) -> torch.Tensor:
+        if aggregation == "min":
+            return torch.min(q_values, dim=0)[0]
+        if aggregation == "mean":
+            return torch.mean(q_values, dim=0)
+        raise ValueError("actor_q_aggregation must be min or mean")
 
     def _forward_learn(self, data: dict) -> Dict[str, Any]:
         """
@@ -382,8 +393,8 @@ class EDACPolicy(Policy):
             log_prob = log_prob - torch.log(y).sum(-1, keepdim=True)
 
             eval_data = {'obs': obs, 'action': action}
-            new_q_value = self._learn_model.forward(eval_data, mode='compute_critic')['q_value']
-            new_q_value = torch.min(new_q_value, dim=0)[0]
+            new_q_heads = self._learn_model.forward(eval_data, mode='compute_critic')['q_value']
+            new_q_value = self._aggregate_actor_q(new_q_heads, self._actor_q_aggregation)
 
             if self._value_norm:
                 self._running_mean_std.update(new_q_value.detach().cpu().numpy())
