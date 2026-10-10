@@ -13,7 +13,7 @@ from t010_validate import continuity, make_policy
 
 RECIPE = ROOT / "scripts/repro/configs/t010_recipe.json"
 CONFIG = ROOT / "scripts/repro/configs/halfcheetah_medium_replay_t010.py"
-GPU_CHECK = ROOT / "_so2_work/validation/t010-gpu-v1/validation.json"
+GPU_CHECK = ROOT / "_so2_work/validation/t010-gpu-v2/validation.json"
 
 
 def rows(path):

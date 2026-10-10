@@ -10,7 +10,7 @@ import traceback
 from t010_edac import *
 
 PYTHON = "/home/lzy/Projects/SO2/.venv/bin/python"
-WORK = ROOT / "_so2_work/t010"
+WORK = ROOT / "_so2_work/t010-v2"
 STATE = WORK / "queue_state.json"
 RESEARCH = Path("/home/lzy/Projects/rl_sample_efficiency_research_t010")
 T009 = Path("/home/lzy/Projects/SO2_t009")
@@ -145,8 +145,9 @@ def main():
        "code_sha":subprocess.check_output(["git","rev-parse","HEAD"],cwd=ROOT,text=True).strip(),
        "recipe_sha256":digest(ROOT/"scripts/repro/configs/t010_recipe.json"),"runs":{k:str(v) for k,v in RUNS.items()},
        "budgets_sec":{"gpu_preflight":1800,"offline":172800,"online":28800},"stages":{},
-       "cpu_test_updates_actual":48,"fixed_batch_total_limit":200,"auto_retry":False,
-       "engineering_started_unix":1791623273}
+       "cpu_test_updates_actual":63,"fixed_batch_total_limit":200,"auto_retry":False,
+       "engineering_started_unix":1791623273,"queue_workdir":str(WORK),
+       "previous_preflight_updates":15,"previous_cpu_updates":48,"previous_gpu_preflight_wall_sec":10.016560283009312}
     atomic_json(STATE,state)
     def interrupt(signum, frame):
         raise RuntimeError(f"queue signal {signum}; retain partial and stop subsequent stages")
@@ -163,8 +164,8 @@ def main():
         with GLOBAL_LOCK.open("a+") as lock:
             fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
             lock.seek(0);lock.truncate();lock.write(str(os.getpid()));lock.flush()
-            gpu_dir=ROOT/"_so2_work/validation/t010-gpu-v1"
-            spawn_and_watch(state,"gpu_preflight",[PYTHON,str(ROOT/"scripts/repro/t010_validate.py"),"--device","cuda","--out",str(gpu_dir)],1800)
+            gpu_dir=ROOT/"_so2_work/validation/t010-gpu-v2"
+            spawn_and_watch(state,"gpu_preflight",[PYTHON,str(ROOT/"scripts/repro/t010_validate.py"),"--device","cuda","--out",str(gpu_dir)],1800-state["previous_gpu_preflight_wall_sec"])
             result=json.loads((gpu_dir/"validation.json").read_text());assert result["status"]=="passed"
             assert result["fixed_batch_updates"]+state["cpu_test_updates_actual"]<=200
             state["gpu_preflight"]=result;deliver(state)

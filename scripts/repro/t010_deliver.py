@@ -59,12 +59,12 @@ def deliver(state):
     atomic_json(EVIDENCE/"queue_state.json",state)
     recipe=ROOT/"scripts/repro/configs/t010_recipe.json"
     shutil.copy2(recipe,EVIDENCE/"recipe.json")
-    for label in ("cpu-v1","cpu-v2","cpu-v3","gpu-v1"):
+    for label in ("cpu-v1","cpu-v2","cpu-v3","gpu-v1","gpu-v2"):
         src=ROOT/f"_so2_work/validation/t010-{label}/validation.json"
         if src.exists():shutil.copy2(src,EVIDENCE/f"validation-{label}.json")
     src=ROOT/"_so2_work/validation/t010-queue-cpu/validation.json"
     if src.exists():shutil.copy2(src,EVIDENCE/"validation-queue-cpu.json")
-    handoff=ROOT/"_so2_work/t010/handoff.json"
+    handoff=Path(state.get("queue_workdir", str(ROOT/"_so2_work/t010")))/"handoff.json"
     if handoff.exists():shutil.copy2(handoff,EVIDENCE/"handoff.json")
     summaries={}
     for phase,exp in (("offline","EXP-025"),("online","EXP-026")):

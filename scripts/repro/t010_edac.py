@@ -75,9 +75,9 @@ def rng_state():
 
 def restore_rng(state):
     random.setstate(state["python"]); np.random.set_state(state["numpy"])
-    torch.set_rng_state(state["torch_cpu"])
+    torch.set_rng_state(state["torch_cpu"].cpu())
     if state["torch_cuda"]:
-        torch.cuda.set_rng_state_all(state["torch_cuda"])
+        torch.cuda.set_rng_state_all([value.cpu() for value in state["torch_cuda"]])
 
 
 def seed_all(seed, cuda=False):
