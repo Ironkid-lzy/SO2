@@ -1,0 +1,49 @@
+{
+  "plan_sha": "3b6896c2e81b63c37fa2d0780130ec610fbf45b1",
+  "seed": 0,
+  "env_id": "halfcheetah-medium-replay-v2",
+  "critic_heads": 2,
+  "hidden_sizes": [
+    256,
+    256,
+    256
+  ],
+  "layer_norm": true,
+  "dropout_p": 0.005,
+  "actor_log_sigma_bounds": [
+    -20,
+    2
+  ],
+  "actor_aggregation": "min",
+  "offline_updates": 3000000,
+  "offline_batch_size": 256,
+  "eta": 1.0,
+  "offline_lr": 0.0003,
+  "gamma": 0.99,
+  "tau": 0.005,
+  "offline_alpha_initial": 1.0,
+  "offline_auto_alpha": true,
+  "offline_eval_every": 100000,
+  "eval_episodes": 20,
+  "offline_wall_sec": 172800,
+  "online_wall_sec": 28800,
+  "online_env_steps": 100000,
+  "online_warmup": 5000,
+  "online_critic_updates": 950000,
+  "online_actor_updates": 95000,
+  "online_alpha_updates": 0,
+  "online_alpha": 0.2,
+  "online_es": false,
+  "online_noise_sigma": 0.3,
+  "online_noise_clip": [
+    -0.6,
+    0.6
+  ],
+  "online_eval_every": 2500,
+  "preflight_update_limit": 200,
+  "preflight_wall_sec": 1800,
+  "engineering_wall_sec": 28800,
+  "offline_exp": "EXP-025",
+  "online_exp": "EXP-026",
+  "protocol_revision": "2026-10-10: user selected SO2 actor bounds [-20,2] in both stages"
+}
