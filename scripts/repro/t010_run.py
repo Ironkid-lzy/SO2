@@ -10,6 +10,7 @@ from functools import partial
 
 from t010_edac import *
 from t010_validate import continuity, make_policy
+from t010_loading import checked_parent, export_weights, configure_load, remaining_online_seconds
 
 RECIPE = ROOT / "scripts/repro/configs/t010_recipe.json"
 CONFIG = ROOT / "scripts/repro/configs/halfcheetah_medium_replay_t010.py"
@@ -131,14 +132,11 @@ def offline(run):
 def online(run,parent):
     from ding.entry import serial_pipeline_offline2online
     from t003_accept import check as accept
-    ident=identity(); acceptance=json.loads((parent.parents[1]/"acceptance.json").read_text())
-    assert acceptance["accepted"] and parent.name=="update_3000000.pth"
-    assert digest(parent)==acceptance["parent_sha256"]
-    saved=torch.load(parent,map_location="cuda",weights_only=False)
-    assert saved["updates"]==3000000 and saved["train_env_steps"]==0 and saved["identity"]["git_commit"]==ident["git_commit"]
-    assert saved["identity"]["recipe_sha256"]==ident["recipe_sha256"]
-    cpu_data = json.loads((ROOT/"_so2_work/validation/t010-cpu-v3/validation.json").read_text())["data_identity"]
-    assert saved["identity"]["data_identity"]["arrays"] == cpu_data["arrays"]
+    ident=identity()
+    saved=checked_parent(parent,ident)
+    init_path=run/"online_init.pth"
+    manifest=export_weights(saved,parent,init_path,ident)
+    atomic_json(run/"initialization_manifest.json",manifest)
     probe_trainer=OfflineEDAC(make_model("cuda"));probe_trainer.restore(saved)
     seed_all(0,True)
     # Fixed synthetic observations/actions only: no interaction and no update.
@@ -148,15 +146,15 @@ def online(run,parent):
     atomic_json(run/"stage_continuity.json",{**transition,"parent_sha256":digest(parent)})
     del probe_trainer,saved
     fresh=runpy.run_path(str(CONFIG));cfg,create_cfg=fresh["main_config"],fresh["create_config"]
-    cfg.exp_name=str(run.relative_to(ROOT));cfg.policy.learn.learner.load_path=str(parent)
-    cfg.policy.learn.learner.hook.load_ckpt_before_run=str(parent)
+    cfg.exp_name=str(run.relative_to(ROOT));configure_load(cfg,init_path)
     meta={**ident,"status":"running","phase":"online","exp_id":"EXP-026","start_unix":time.time(),
           "checkpoint_path":str(parent),"checkpoint_sha256":digest(parent),"parent_offline_exp":"EXP-025",
-          "aggregation":"min","dropout_p":.005,"new_online_buffer":True}
+          "aggregation":"min","dropout_p":.005,"new_online_buffer":True,
+          "initialization":manifest,"max_wall_clock_sec":remaining_online_seconds()}
     atomic_json(run/"run_meta.json",meta)
     try:
         policy,_=serial_pipeline_offline2online([cfg,create_cfg],seed=0,max_env_steps=100000,
-                max_wall_clock_sec=28800,eval_env_step_interval=2500,eval_n_episode=20,
+                max_wall_clock_sec=remaining_online_seconds(),eval_env_step_interval=2500,eval_n_episode=20,
                 metrics_path=str(run/"metrics.jsonl"),policy_probe_path=str(run/"live_policy_probes.jsonl"),
                 rng_snapshot_dir=str(run/"rng"))
         final=next(x for x in reversed(rows(run/"metrics.jsonl")) if x["event"]=="final")

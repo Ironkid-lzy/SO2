@@ -59,7 +59,7 @@ def deliver(state):
     atomic_json(EVIDENCE/"queue_state.json",state)
     recipe=ROOT/"scripts/repro/configs/t010_recipe.json"
     shutil.copy2(recipe,EVIDENCE/"recipe.json")
-    for label in ("cpu-v1","cpu-v2","cpu-v3","gpu-v1","gpu-v2"):
+    for label in ("cpu-v1","cpu-v2","cpu-v3","gpu-v1","gpu-v2","loading-repair"):
         src=ROOT/f"_so2_work/validation/t010-{label}/validation.json"
         if src.exists():shutil.copy2(src,EVIDENCE/f"validation-{label}.json")
     src=ROOT/"_so2_work/validation/t010-queue-cpu/validation.json"
@@ -72,7 +72,7 @@ def deliver(state):
         if not run.exists():continue
         summaries[phase]=curves(run,phase,exp)
         processed=RESEARCH/"results/processed"/exp
-        for name in ("run_meta.json","state.json","stage_continuity.json","acceptance.json","checkpoint_manifest.json","first_window.json","policy_reload.json"):
+        for name in ("run_meta.json","state.json","stage_continuity.json","acceptance.json","checkpoint_manifest.json","first_window.json","policy_reload.json","initialization_manifest.json"):
             src=run/name
             if src.exists():shutil.copy2(src,processed/name)
         meta=json.loads((run/"run_meta.json").read_text()) if (run/"run_meta.json").exists() else {}
@@ -81,7 +81,7 @@ def deliver(state):
             raw=RESEARCH/"results/raw"/exp/run.name
             if not raw.exists():
                 raw.mkdir(parents=True)
-                for name in ("run_meta.json","metrics.jsonl","stage_continuity.json","acceptance.json","checkpoint_manifest.json","first_window.json","policy_reload.json"):
+                for name in ("run_meta.json","metrics.jsonl","stage_continuity.json","acceptance.json","checkpoint_manifest.json","first_window.json","policy_reload.json","initialization_manifest.json"):
                     src=run/name
                     if src.exists():shutil.copy2(src,raw/name)
                 files=[{"path":str(f.relative_to(run)),"size":f.stat().st_size,"sha256":digest(f),"backup_status":"Linux only"}
