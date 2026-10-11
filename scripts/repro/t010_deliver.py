@@ -22,7 +22,7 @@ def rows(path):
     return out
 
 
-def curves(run,phase,exp):
+def curves(run,phase,exp,seed=0):
     events=[r for r in rows(run/"metrics.jsonl") if r.get("event")=="evaluation"]
     axis="gradient_updates" if phase=="offline" else "env_steps"
     processed=RESEARCH/"results/processed"/exp;processed.mkdir(parents=True,exist_ok=True)
@@ -44,7 +44,7 @@ def curves(run,phase,exp):
         import matplotlib.pyplot as plt
         fig,ax=plt.subplots(figsize=(6.4,3.7));ax.plot(x,scores)
         ax.set(xlabel="Offline gradient updates" if phase=="offline" else "Online training environment steps",
-               ylabel="D4RL normalized score (×100)",title=f"{exp}: seed0, same network EDAC → SO2")
+               ylabel="D4RL normalized score (×100)",title=f"{exp}: seed{seed}, same network EDAC → SO2")
         ax.grid(alpha=.25);fig.tight_layout()
         path=RESEARCH/"results/figures"/exp;path.mkdir(parents=True,exist_ok=True)
         fig.savefig(path/"curve.png",dpi=160);fig.savefig(path/"curve.pdf");plt.close(fig)

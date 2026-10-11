@@ -1,4 +1,4 @@
-"""One seed0 offline run or one online run, with no retries or best-parent selection."""
+"""One offline seed or the original online seed0; no retries or parent selection."""
 import argparse
 import math
 import runpy
@@ -27,13 +27,13 @@ def append(path, value):
         f.write(json.dumps(value, allow_nan=False) + "\n"); f.flush()
 
 
-def identity():
+def identity(seed=0):
     assert Path.cwd().resolve() == ROOT
     assert not subprocess.check_output(["git","status","--porcelain"],cwd=ROOT,text=True).strip()
     assert json.loads(GPU_CHECK.read_text())["status"] == "passed"
     return {"git_commit":subprocess.check_output(["git","rev-parse","HEAD"],cwd=ROOT,text=True).strip(),
             "recipe_sha256":digest(RECIPE),"config_sha256":digest(CONFIG),"reference_sha":REFERENCE_SHA,
-            "dataset_sha256":DATA_SHA,"seed":0,"actor_bounds":[-20,2],
+            "dataset_sha256":DATA_SHA,"seed":seed,"actor_bounds":[-20,2],
             "torch":torch.__version__,"cuda":torch.version.cuda,"python":sys.version,
             "gpu":torch.cuda.get_device_name(0),"command":sys.argv,"cwd":str(ROOT)}
 
@@ -46,23 +46,33 @@ def interrupted(signum, frame):
     raise RuntimeError(f"terminated by signal {signum}; no automatic restart")
 
 
-def offline(run):
+def offline(run, seed=0, exp_id="EXP-025", stop_at=None):
     from ding.envs import get_vec_env_setting, create_env_manager
     from ding.config import compile_config
     from ding.worker import InteractionSerialEvaluator
     import d4rl
-    ident=identity(); data, data_meta=load_dataset()
+    ident=identity(seed); data, data_meta=load_dataset()
+    implementation_sha="f5dacc442f73e94e085988600fa2ff8cb8ad95b0"
+    for source in ("SO2", "scripts/repro/t010_edac.py"):
+        old=subprocess.check_output(["git","rev-parse",f"{implementation_sha}:{source}"],text=True).strip()
+        current=subprocess.check_output(["git","rev-parse",f"HEAD:{source}"],text=True).strip()
+        assert old==current, f"training implementation changed: {source}"
+    ident.update(training_implementation_sha=implementation_sha, stop_at_unix=stop_at)
+    effective=json.loads(RECIPE.read_text());effective.update(seed=seed,offline_exp=exp_id)
+    if seed!=0:effective["online_exp"]=None  # Online stage is not scheduled by this run.
+    atomic_json(run/"effective_recipe.json",effective)
+    ident["effective_recipe_sha256"]=digest(run/"effective_recipe.json")
     ident["data_identity"] = data_meta
-    seed_all(0,True); trainer=OfflineEDAC(make_model("cuda"))
-    meta={**ident,"status":"running","phase":"offline","exp_id":"EXP-025","start_unix":time.time(),
+    seed_all(seed,True); trainer=OfflineEDAC(make_model("cuda"))
+    meta={**ident,"status":"running","phase":"offline","exp_id":exp_id,"start_unix":time.time(),
           "data_identity":data_meta,"random_initialization":True,"train_env_steps":0}
     atomic_json(run/"run_meta.json",meta)
     rng=rng_state()
     fresh=runpy.run_path(str(CONFIG)); fresh["main_config"].exp_name=str(run.relative_to(ROOT))
-    cfg=compile_config(fresh["main_config"],seed=0,env=None,auto=True,create_cfg=fresh["create_config"],save_cfg=False)
+    cfg=compile_config(fresh["main_config"],seed=seed,env=None,auto=True,create_cfg=fresh["create_config"],save_cfg=False)
     env_fn, _, eval_cfg=get_vec_env_setting(cfg.env)
-    envs=create_env_manager(cfg.env.manager,[partial(env_fn,cfg=c) for c in eval_cfg]); envs.seed(0,dynamic_seed=True)
-    eval_policy=make_policy("cuda")
+    envs=create_env_manager(cfg.env.manager,[partial(env_fn,cfg=c) for c in eval_cfg]); envs.seed(seed,dynamic_seed=True)
+    eval_policy=make_policy("cuda",seed=seed)
     evaluator=InteractionSerialEvaluator(cfg.policy.eval.evaluator,envs,eval_policy.eval_mode,exp_name=cfg.exp_name)
     restore_rng(rng)
     eval_steps=0; manifest=[]; start=time.monotonic()
@@ -92,6 +102,7 @@ def offline(run):
         evaluate_save()
         while trainer.updates<3000000:
             assert time.monotonic()-start<172800, "48h offline process budget exhausted"
+            assert stop_at is None or time.time()<stop_at, "scheduled deadline at update boundary"
             idx=np.random.randint(0,len(data["rewards"]),size=256)
             losses=trainer.update(batch_at(data,idx,"cuda"))
             assert all(math.isfinite(x) for x in losses.values()), "nonfinite EDAC loss"
@@ -110,7 +121,7 @@ def offline(run):
         assert saved["online_critic_sha256"]==tensor_hash(trainer.model.critic.state_dict())
         assert saved["target_critic_sha256"]==tensor_hash(trainer.target.critic.state_dict())
         batch=batch_at(data,np.arange(256),"cuda")
-        _,check=continuity(trainer,saved,"cuda",batch)
+        _,check=continuity(trainer,saved,"cuda",batch,seed=seed)
         check.update(parent_path=str(final),parent_sha256=digest(final),offline_updates=3000000)
         atomic_json(run/"stage_continuity.json",check)
         acceptance={"accepted":True,"errors":[],"updates":{"critic":3000000,"actor":3000000,"alpha":3000000},
@@ -182,11 +193,18 @@ def online(run,parent):
 def main():
     parser=argparse.ArgumentParser();parser.add_argument("--phase",choices=("offline","online"),required=True)
     parser.add_argument("--run-dir",type=Path,required=True);parser.add_argument("--parent",type=Path)
-    args=parser.parse_args();assert not args.run_dir.exists();args.run_dir.mkdir(parents=True)
+    parser.add_argument("--seed",type=int,default=0)
+    parser.add_argument("--exp-id")
+    parser.add_argument("--stop-at",type=float)
+    args=parser.parse_args()
+    assert args.seed in range(5)
+    if args.phase=="online":assert args.seed==0 and args.exp_id is None and args.stop_at is None
+    if args.phase=="offline" and args.seed!=0:assert args.exp_id=="EXP-027" and args.stop_at is not None
+    assert not args.run_dir.exists();args.run_dir.mkdir(parents=True)
     assert args.run_dir.resolve().is_relative_to(ROOT/"_so2_work/runs")
     torch.set_num_threads(2)
     signal.signal(signal.SIGTERM,interrupted);signal.signal(signal.SIGINT,interrupted)
-    if args.phase=="offline": assert args.parent is None;offline(args.run_dir)
+    if args.phase=="offline": assert args.parent is None;offline(args.run_dir,args.seed,args.exp_id or "EXP-025",args.stop_at)
     else: assert args.parent is not None;online(args.run_dir,args.parent)
 
 if __name__=="__main__": main()

@@ -120,21 +120,21 @@ def regression(device, bounds):
             "inactive_identity_input_stats": "official actor input_mu=0/input_std=1, unused by forward"}
 
 
-def make_policy(device):
+def make_policy(device, seed=0):
     import runpy
     from ding.config import compile_config
     from ding.policy import create_policy
     cfg = runpy.run_path(str(ROOT/"scripts/repro/configs/halfcheetah_medium_replay_t010.py"))
     cfg["main_config"].policy.cuda = device == "cuda"
-    out = compile_config(cfg["main_config"], seed=0, env=None, auto=True,
+    out = compile_config(cfg["main_config"], seed=seed, env=None, auto=True,
                          create_cfg=cfg["create_config"], save_cfg=False)
     out.policy.type += "_command"
     out.policy.import_names = ["ding.policy.edac", "ding.policy.command_mode_policy_instance"]
     return create_policy(out.policy, model=None, enable_field=["learn","collect","eval","command"])
 
 
-def continuity(trainer, state, device, batch):
-    policy = make_policy(device)
+def continuity(trainer, state, device, batch, seed=0):
+    policy = make_policy(device, seed=seed)
     policy._load_state_dict_learn(state)
     assert set(policy._model.state_dict()) == set(state["model"])
     assert tensor_hash(policy._model.state_dict()) == tensor_hash(state["model"])
