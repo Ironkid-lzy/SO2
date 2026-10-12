@@ -19,7 +19,7 @@ PYTHON="/home/lzy/Projects/SO2/.venv/bin/python"
 RESEARCH=Path("/home/lzy/Projects/rl_sample_efficiency_research_t010")
 WORK=ROOT/"_so2_work/t010-multiseed-v1"
 STATE=WORK/"queue_state.json"
-VALIDATION=ROOT/"_so2_work/validation/t010-multiseed"
+VALIDATION=ROOT/"_so2_work/validation/t010-multiseed-local"
 LOCK=Path("/home/lzy/Projects/SO2/_so2_work/training_resource.lock")
 PLAN=[("offline",seed) for seed in (2,3,4)]+[("online",seed) for seed in (1,2,3,4)]
 LIMITS={"offline":172800.,"online":115200.}
@@ -116,6 +116,8 @@ def deliver(state):
 
 ## 最新状态
 
+交付状态：仅Linux本地封存与Git提交，远端上传待用户批准；队列不执行push。
+
 执行状态：`{state['status']}`，当前 `{state.get('current_stage')}`。更新时间：{datetime.now(ZoneInfo('Asia/Shanghai')).isoformat()}。技术验收逐run记录；研究验收待定。用户2026-10-12明确新的服务器窗口没有时间限制，取代此前9:00截止，仅保留任务实验预算。
 
 已有seed0两阶段与seed1离线不重跑。本队列只执行offline2–4、online1–4；失败保留partial并停止后续，无自动重试。配对(0,0)..(4,4)，所有parent固定3M final，绝不按得分挑选。
@@ -157,7 +159,7 @@ N2、3×256、LN、Dropout .005、actor bounds[-20,2]、actor min；离线EDAC e
     subprocess.run(["git","add",*paths],cwd=RESEARCH,check=True,timeout=60)
     if subprocess.run(["git","diff","--cached","--quiet"],cwd=RESEARCH).returncode:
         subprocess.run(["git","commit","-m",f"SO2-T010: multiseed {state['status']} {state.get('current_stage')}"],cwd=RESEARCH,check=True,timeout=60)
-    subprocess.run(["git","push","origin","codex/so2-t010-delivery"],cwd=RESEARCH,check=True,timeout=90)
+    state["delivery_status"]="local_committed_pending_upload_approval"
     state["research_sha"]=subprocess.check_output(["git","rev-parse","HEAD"],cwd=RESEARCH,text=True).strip();atomic_json(STATE,state)
 
 
@@ -204,7 +206,7 @@ def main():
     for phase,seed in PLAN:assert not run_path(phase,seed).exists(),"formal run exists"
     sha=subprocess.check_output(["git","rev-parse","HEAD"],cwd=ROOT,text=True).strip()
     assert not subprocess.check_output(["git","status","--porcelain"],cwd=ROOT,text=True).strip()
-    assert subprocess.check_output(["git","ls-remote","origin","refs/heads/codex/so2-t010-pretrain"],cwd=ROOT,text=True).split()[0]==sha
+    subprocess.run(["git","merge-base","--is-ancestor","4e0f53255940047c7349a5a15a80e20527d9cf94",sha],cwd=ROOT,check=True)
     validation=json.loads((VALIDATION/"validation.json").read_text())
     assert validation["status"]=="passed" and validation["code_sha"]==sha and not validation["git_dirty"] and validation["updates"]==0
     prior=json.loads((ROOT/"_so2_work/t010-seed1-20261012/queue_state.json").read_text());assert prior["status"]=="completed"
