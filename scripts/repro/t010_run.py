@@ -140,39 +140,42 @@ def offline(run, seed=0, exp_id="EXP-025", stop_at=None):
     finally: evaluator.close()
 
 
-def online(run,parent):
+def online(run,parent,seed=0,exp_id="EXP-026",parent_record=None,wall_seconds=None):
     from ding.entry import serial_pipeline_offline2online
     from t003_accept import check as accept
-    ident=identity()
-    saved=checked_parent(parent,ident)
+    ident=identity(seed)
+    budget=remaining_online_seconds() if wall_seconds is None else wall_seconds
+    assert 0<budget<=28800
+    saved=checked_parent(parent,ident,parent_record)
     init_path=run/"online_init.pth"
     manifest=export_weights(saved,parent,init_path,ident)
     atomic_json(run/"initialization_manifest.json",manifest)
     probe_trainer=OfflineEDAC(make_model("cuda"));probe_trainer.restore(saved)
-    seed_all(0,True)
+    seed_all(seed,True)
     # Fixed synthetic observations/actions only: no interaction and no update.
     probe={"observations":torch.linspace(-1,1,256*17,device="cuda").reshape(256,17),
            "actions":torch.linspace(-1,1,256*6,device="cuda").reshape(256,6)}
-    _,transition=continuity(probe_trainer,saved,"cuda",probe)
+    _,transition=continuity(probe_trainer,saved,"cuda",probe,seed=seed)
     atomic_json(run/"stage_continuity.json",{**transition,"parent_sha256":digest(parent)})
     del probe_trainer,saved
     fresh=runpy.run_path(str(CONFIG));cfg,create_cfg=fresh["main_config"],fresh["create_config"]
     cfg.exp_name=str(run.relative_to(ROOT));configure_load(cfg,init_path)
-    meta={**ident,"status":"running","phase":"online","exp_id":"EXP-026","start_unix":time.time(),
-          "checkpoint_path":str(parent),"checkpoint_sha256":digest(parent),"parent_offline_exp":"EXP-025",
+    meta={**ident,"status":"running","phase":"online","exp_id":exp_id,"start_unix":time.time(),
+          "checkpoint_path":str(parent),"checkpoint_sha256":digest(parent),"parent_offline_exp":"EXP-025" if seed==0 else "EXP-027",
+          "pretrain_seed":seed,"online_seed":seed,
           "aggregation":"min","dropout_p":.005,"new_online_buffer":True,
-          "initialization":manifest,"max_wall_clock_sec":remaining_online_seconds()}
+          "initialization":manifest,"max_wall_clock_sec":budget}
     atomic_json(run/"run_meta.json",meta)
     try:
-        policy,_=serial_pipeline_offline2online([cfg,create_cfg],seed=0,max_env_steps=100000,
-                max_wall_clock_sec=remaining_online_seconds(),eval_env_step_interval=2500,eval_n_episode=20,
+        policy,_=serial_pipeline_offline2online([cfg,create_cfg],seed=seed,max_env_steps=100000,
+                max_wall_clock_sec=budget,eval_env_step_interval=2500,eval_n_episode=20,
                 metrics_path=str(run/"metrics.jsonl"),policy_probe_path=str(run/"live_policy_probes.jsonl"),
                 rng_snapshot_dir=str(run/"rng"))
         final=next(x for x in reversed(rows(run/"metrics.jsonl")) if x["event"]=="final")
         assert final["env_steps"]==100000
         assert final["initial_buffer_counts"]=={"online":0,"mixed":201798}
         probe=rows(run/"live_policy_probes.jsonl")[-1];obs=torch.tensor(probe["observation"])
-        ckpt=run/"ckpt/envstep_100000.pth.tar";loaded=make_policy("cuda")
+        ckpt=run/"ckpt/envstep_100000.pth.tar";loaded=make_policy("cuda",seed=seed)
         loaded._load_state_dict_learn(torch.load(ckpt,map_location="cpu",weights_only=False))
         before=torch.tensor(probe["live_action_before_save"])
         live=policy._forward_eval({0:obs})[0]["action"].cpu();fresh_action=loaded._forward_eval({0:obs})[0]["action"].cpu()
@@ -196,15 +199,23 @@ def main():
     parser.add_argument("--seed",type=int,default=0)
     parser.add_argument("--exp-id")
     parser.add_argument("--stop-at",type=float)
+    parser.add_argument("--parent-record",type=Path)
+    parser.add_argument("--wall-seconds",type=float)
     args=parser.parse_args()
     assert args.seed in range(5)
-    if args.phase=="online":assert args.seed==0 and args.exp_id is None and args.stop_at is None
+    if args.phase=="online":
+        assert args.stop_at is None
+        if args.seed!=0:assert args.exp_id=="EXP-028" and args.parent_record is not None and args.wall_seconds is not None
+    else:assert args.parent_record is None and args.wall_seconds is None
     if args.phase=="offline" and args.seed!=0:assert args.exp_id=="EXP-027" and args.stop_at is not None
     assert not args.run_dir.exists();args.run_dir.mkdir(parents=True)
     assert args.run_dir.resolve().is_relative_to(ROOT/"_so2_work/runs")
     torch.set_num_threads(2)
     signal.signal(signal.SIGTERM,interrupted);signal.signal(signal.SIGINT,interrupted)
     if args.phase=="offline": assert args.parent is None;offline(args.run_dir,args.seed,args.exp_id or "EXP-025",args.stop_at)
-    else: assert args.parent is not None;online(args.run_dir,args.parent)
+    else:
+        assert args.parent is not None
+        online(args.run_dir,args.parent,args.seed,args.exp_id or "EXP-026",
+               json.loads(args.parent_record.read_text()) if args.parent_record else None,args.wall_seconds)
 
 if __name__=="__main__": main()

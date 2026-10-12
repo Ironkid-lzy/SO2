@@ -23,16 +23,37 @@ def remaining_online_seconds():
     return 28800 - used
 
 
-def checked_parent(parent, ident):
-    # Verify immutable trust anchors BEFORE the explicit full-object load.
-    assert parent.resolve() == PARENT.resolve()
-    assert digest(parent) == PARENT_SHA
-    acceptance = json.loads((parent.parents[1] / "acceptance.json").read_text())
-    assert acceptance["accepted"] and acceptance["parent_sha256"] == PARENT_SHA
-    assert acceptance["parent_path"] == str(parent)
-    saved = torch.load(parent, map_location="cuda", weights_only=False)
-    assert saved["updates"] == 3000000 and saved["train_env_steps"] == 0
-    assert saved["identity"]["git_commit"] == OFFLINE_SHA
+def checked_parent(parent, ident, record=None):
+    # The queue freezes each accepted final parent before any full-object load.
+    if record is None:
+        assert ident["seed"]==0
+        expected_path, expected_hash, expected_code = PARENT, PARENT_SHA, OFFLINE_SHA
+    else:
+        seed=ident["seed"];assert seed in (1,2,3,4) and record["seed"]==seed
+        expected_path=ROOT/f"_so2_work/runs/EXP-027/EXP-027-s{seed}-attempt1/ckpt/update_3000000.pth"
+        assert record["parent_path"]==str(expected_path)
+        expected_hash,expected_code=record["parent_sha256"],record["parent_code_sha"]
+        if seed==1:
+            assert expected_hash=="68aa1dfed8500f6111b1b730dcc778a68d48e42e9e196bd6a41f97151b8c5b20"
+            assert expected_code=="c7e263cbf09a5b659d3d66e060274cc525c10cd2"
+        else:assert expected_code==ident["git_commit"]
+    assert parent.resolve()==expected_path.resolve()
+    assert digest(parent)==expected_hash
+    if record is not None and "acceptance_sha256" in record:
+        assert digest(parent.parents[1]/"acceptance.json")==record["acceptance_sha256"]
+    acceptance=json.loads((parent.parents[1]/"acceptance.json").read_text())
+    assert acceptance["accepted"] and acceptance["parent_sha256"]==expected_hash
+    assert acceptance["parent_path"]==str(parent)
+    assert acceptance["updates"]=={"critic":3000000,"actor":3000000,"alpha":3000000}
+    saved=torch.load(parent,map_location="cuda",weights_only=False)
+    assert saved["updates"]==3000000 and saved["train_env_steps"]==0
+    assert saved["identity"]["git_commit"]==expected_code
+    if record is not None:
+        assert saved["identity"]["training_implementation_sha"]==OFFLINE_SHA
+        for source in ("SO2","scripts/repro/t010_edac.py"):
+            original=subprocess.check_output(["git","rev-parse",f"{OFFLINE_SHA}:{source}"],cwd=ROOT)
+            assert original==subprocess.check_output(["git","rev-parse",f"{expected_code}:{source}"],cwd=ROOT)
+            assert original==subprocess.check_output(["git","rev-parse",f"HEAD:{source}"],cwd=ROOT)
     for key in ("recipe_sha256", "config_sha256", "dataset_sha256", "reference_sha", "seed", "actor_bounds"):
         assert saved["identity"][key] == ident[key], key
     cpu_data = json.loads((ROOT / "_so2_work/validation/t010-cpu-v3/validation.json").read_text())["data_identity"]
@@ -46,8 +67,8 @@ def export_weights(saved, parent, path, ident):
                for name in ("model", "target_model")}
     assert all(type(value) is torch.Tensor for state in weights.values() for value in state.values())
     atomic_torch(path, weights)
-    return {"parent_path": str(parent), "parent_sha256": PARENT_SHA,
-            "parent_code_sha": OFFLINE_SHA, "online_code_sha": ident["git_commit"],
+    return {"parent_path": str(parent), "parent_sha256": digest(parent),
+            "parent_code_sha": saved["identity"]["git_commit"], "online_code_sha": ident["git_commit"],
             "export_path": str(path), "export_sha256": digest(path),
             "contents": ["model", "target_model"], "recipe_sha256": ident["recipe_sha256"],
             "config_sha256": ident["config_sha256"], "dataset_sha256": DATA_SHA,
@@ -59,7 +80,7 @@ def configure_load(cfg, path):
     cfg.policy.learn.learner.hook.load_ckpt_before_run = str(path)
 
 
-def validate(out):
+def validate(out, parent=PARENT, record=None, seed=0):
     import runpy
     from ding.config import compile_config
     from ding.worker import BaseLearner
@@ -70,29 +91,29 @@ def validate(out):
     torch.set_num_threads(2)
     ident = {"git_commit":subprocess.check_output(["git","rev-parse","HEAD"],cwd=ROOT,text=True).strip(),
              "recipe_sha256":digest(RECIPE), "config_sha256":digest(CONFIG),
-             "dataset_sha256":DATA_SHA, "reference_sha":REFERENCE_SHA, "seed":0, "actor_bounds":[-20,2],
+             "dataset_sha256":DATA_SHA, "reference_sha":REFERENCE_SHA, "seed":seed, "actor_bounds":[-20,2],
              "git_dirty":bool(subprocess.check_output(["git","status","--porcelain"],cwd=ROOT,text=True).strip()),
              "source_sha256":{name:digest(ROOT/"scripts/repro"/name) for name in
                               ("t010_loading.py","t010_run.py","t010_resume_online.py","t010_deliver.py")},
              "torch":torch.__version__, "cuda":torch.version.cuda}
-    saved = checked_parent(PARENT, ident)
+    saved = checked_parent(parent, ident, record)
     try:
-        learner_hook.read_file(str(PARENT))
+        learner_hook.read_file(str(parent))
     except pickle.UnpicklingError as exc:
         assert "numpy.core.multiarray._reconstruct" in str(exc)
         rejected = str(exc)
     else:
         raise AssertionError("full parent unexpectedly accepted by default loader")
     init = out / "online_init.pth"
-    manifest = export_weights(saved, PARENT, init, ident)
+    manifest = export_weights(saved, parent, init, ident)
     safe = torch.load(init, map_location="cpu", weights_only=True)
     assert set(safe) == {"model", "target_model"}
-    policy = make_policy("cuda")
-    baseline = make_policy("cuda")
+    policy = make_policy("cuda",seed=seed)
+    baseline = make_policy("cuda",seed=seed)
     baseline.learn_mode.load_state_dict(saved)
     fresh = runpy.run_path(str(CONFIG))
     configure_load(fresh["main_config"], init)
-    cfg = compile_config(fresh["main_config"], seed=0, env=None, auto=True,
+    cfg = compile_config(fresh["main_config"], seed=seed, env=None, auto=True,
                          create_cfg=fresh["create_config"], save_cfg=False)
     assert cfg.policy.learn.learner.load_path == cfg.policy.learn.learner.hook.load_ckpt_before_run == str(init)
     learner = BaseLearner(cfg.policy.learn.learner, policy.learn_mode, exp_name=str(out.relative_to(ROOT)))
@@ -136,7 +157,7 @@ def validate(out):
                   "missing_keys":[], "unexpected_keys":[], "network_hashes":hashes, "errors":errors,
                   "fixed_batch_updates":0, "cumulative_preflight_updates":181, "train_env_steps":0,
                   "evaluation_env_steps":0, "wall_seconds":time.monotonic()-start,
-                  "remaining_online_seconds":remaining_online_seconds()}
+                  "remaining_online_seconds":remaining_online_seconds() if seed==0 else 28800}
         atomic_json(out / "validation.json", result)
         print(json.dumps(result))
     finally:
@@ -146,6 +167,9 @@ def validate(out):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--parent",type=Path,default=PARENT)
+    parser.add_argument("--parent-record",type=Path)
+    parser.add_argument("--seed",type=int,default=0)
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
-    validate(args.out)
+    validate(args.out.resolve(),args.parent,json.loads(args.parent_record.read_text()) if args.parent_record else None,args.seed)
