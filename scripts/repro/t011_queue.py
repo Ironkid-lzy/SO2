@@ -48,6 +48,10 @@ def watch(state,seed):
                 pids=subprocess.check_output(["nvidia-smi","--query-compute-apps=pid","--format=csv,noheader,nounits"],text=True).strip()
                 assert all(belongs(int(pid),child.pid) for pid in pids.splitlines()), "another compute process detected"
                 entry["wall_seconds"]=time.monotonic()-start
+                if (run/"run_meta.json").exists():
+                    meta=json.loads((run/"run_meta.json").read_text())
+                    assert meta["git_commit"]==state["code_sha"] and meta["aggregation"]=="mean"
+                    assert meta["checkpoint_sha256"]==m["parent_sha256"] and meta["seed"]==seed
                 records=rows(run/"metrics.jsonl")
                 evaluations=[e for e in records if e.get("event")=="evaluation"]
                 states=[e for e in records if e.get("event")=="evaluation_state"]

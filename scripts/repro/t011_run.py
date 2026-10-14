@@ -42,7 +42,9 @@ def online(run,parent,seed=0,exp_id="EXP-026",parent_record=None,wall_seconds=No
           "checkpoint_path":str(parent),"checkpoint_sha256":digest(parent),"parent_offline_exp":"EXP-025" if seed==0 else "EXP-027",
           "pretrain_seed":seed,"online_seed":seed,
           "aggregation":"mean","dropout_p":.005,"new_online_buffer":True,
-          "initialization":manifest,"max_wall_clock_sec":budget}
+          "initialization":manifest,"max_wall_clock_sec":budget,"effective_recipe_sha256":digest(run/"effective_recipe.json"),
+          "source_sha256":{str(p.relative_to(ROOT)):digest(p) for p in [ROOT/"SO2/ding/policy/edac.py", *sorted((ROOT/"scripts/repro").glob("t011_*.py"))]},
+          "requirements_sha256":digest(VALIDATION/"requirements-lock.txt")}
     atomic_json(run/"run_meta.json",meta)
     guarded=install_guards(run)
     try:

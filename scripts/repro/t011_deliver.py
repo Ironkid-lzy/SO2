@@ -32,7 +32,7 @@ def seal(seed):
                 for folder in ("ckpt","partial") for p in sorted((run/folder).glob("*")) if p.is_file() and p.suffix!=".tmp"]
     atomic_json(run/"checkpoint_manifest.json",checkpoint)
     raw.mkdir(parents=True)
-    for name in ("run_meta.json","metrics.jsonl","initialization_manifest.json","stage_continuity.json","policy_reload.json","acceptance.json","effective_recipe.json","checkpoint_manifest.json","first_window.json","learner_guard.json"):
+    for name in ("run_meta.json","metrics.jsonl","initialization_manifest.json","stage_continuity.json","policy_reload.json","acceptance.json","effective_recipe.json","checkpoint_manifest.json","first_window.json","learner_guard.json","total_config.py","formatted_total_config.py"):
         if (run/name).exists():shutil.copy2(run/name,raw/name)
     files=[{"path":str(p.relative_to(run)),"size":p.stat().st_size,"sha256":digest(p)} for p in sorted(run.rglob("*")) if p.is_file() and p.suffix!=".tmp"]
     atomic_json(raw/"artifact_manifest.json",{"linux_path":str(run),"files":files,"large_artifact_backup":"Linux only"})
@@ -45,7 +45,7 @@ def csv_write(path,records):
 def deliver(state):
     evidence=RESEARCH/"reports/so2/SO2-T011";evidence.mkdir(parents=True,exist_ok=True)
     atomic_json(evidence/"queue_state.json",state)
-    for name in ("validation.json","resources.json","requirements-lock.txt","execution-manifest.json","modification-analysis.md"):
+    for name in ("validation.json","resources.json","requirements-lock.txt","execution-manifest.json","modification-analysis.md","preflight-ledger.json","queue-validation.json","runner-contract.json"):
         src=VALIDATION/name
         if src.exists():shutil.copy2(src,evidence/name)
     for seed in range(5):
