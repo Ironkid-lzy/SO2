@@ -38,6 +38,7 @@ def parity():
     b=make_policy(seed=0,aggregation="min")
     b.learn_mode.load_state_dict(copy.deepcopy(a.learn_mode.state_dict()))
     b._forward_learn=types.MethodType(reference_forward,b)
+    a._cfg.learn.online=b._cfg.learn.online=True
     assert a._actor_q_aggregation=="min"
     ga={k:capture(o) for k,o in (("q",a._optimizer_q),("actor",a._optimizer_policy))}
     gb={k:capture(o) for k,o in (("q",b._optimizer_q),("actor",b._optimizer_policy))}
@@ -71,7 +72,7 @@ def parity():
     except ValueError: pass
     else: raise AssertionError("illegal aggregation accepted")
     # Exercise the actual mean actor path and compare its exact captured Q graph.
-    mean=make_policy(seed=0,aggregation="mean");mean._forward_learn_cnt=9
+    mean=make_policy(seed=0,aggregation="mean");mean._forward_learn_cnt=9;mean._cfg.learn.online=True
     captured={};orig=mean._learn_model.forward
     def forward(*args,**kwargs):
         out=orig(*args,**kwargs)

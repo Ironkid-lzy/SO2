@@ -11,13 +11,13 @@ def main():
         root=Path(tmp)
         for label,code,budget in (("nonzero","raise SystemExit(7)",15.),("timeout","import time;time.sleep(60)",10.2)):
             work=root/label;work.mkdir()
-            stub=work/"stub";stub.write_text("#!/usr/bin/env python3\\n"+code+"\\n");stub.chmod(0o755)
+            stub=work/"stub";stub.write_text("#!/usr/bin/env python3\n"+code+"\n");stub.chmod(0o755)
             state={"stages":{},"code_sha":subprocess.check_output(["git","rev-parse","HEAD"],cwd=ROOT,text=True).strip()}
             with patch.object(q,"WORK",work),patch.object(q,"STATE",work/"state.json"),patch.object(q,"PYTHON",str(stub)),patch.object(q,"budget_for",return_value=budget):
                 try:q.watch(state,0)
                 except AssertionError:pass
                 else:raise AssertionError("supervisor accepted failure")
-            assert state["stages"]["s0"]["status"]=="partial" and state["stages"]["s0"]["exit_code"]!=0
+            assert state["stages"]["s0"]["status"]=="partial" and state["stages"]["s0"]["exit_code"]==(7 if label=="nonzero" else 124)
             record[label]=state["stages"]["s0"]
         assert q.budget_for({"stages":{}})==18000
         assert q.budget_for({"stages":{"failed":{"wall_seconds":85000}}})==1400
