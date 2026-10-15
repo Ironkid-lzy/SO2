@@ -1,5 +1,6 @@
 """Immutable per-seed sealing and paired results; independent training seeds."""
 import csv
+import re
 import math
 import shutil
 import statistics
@@ -138,9 +139,15 @@ def deliver(state):
 
 执行聊天：{THREAD}。远端队列持全局训练锁，实时检查有限性/身份/更新计数/磁盘/超时；异常封存partial并停止后续，不自动重试、不按得分淘汰。当前异常：{state.get('error','无')}。大checkpoint与完整日志仅Linux：{ROOT}/_so2_work；小型raw不可变，每seed结束封存一次并提交。代码启动前固定，不热改，不合并main，不推官方upstream。
 """
+    if state.get("reused_seed0_sha"):
+        report += f"\n续接记录：seed0实际训练SHA为{state['reused_seed0_sha']}，本次seeds1–4为{state['code_sha']}；只改执行器和报告元数据，训练/加载/配置对象与seed0版一致。旧失败队列保留于{state['history_queue_path']}，本续接状态目录为{state['queue_workdir']}。seed0不重跑、raw不改，累计预算含seed0墙钟。见[历史故障与修复](SO2-T011/report-before-schema-repair.md.txt)、[续接验证](SO2-T011/resume-v1/validation.json)。\n"
     (RESEARCH/"reports/so2/SO2-T011.md").write_text(report)
     tracker=RESEARCH/"docs/EXPERIMENT_TRACKER.md";text=tracker.read_text()
-    text=text.replace("**状态：用户已授权，计划已登记；尚未启动。**",f"**状态：{state['status']}，{n}/5完成，待研究验收。**")
+    if "## EXP-029" in text:
+        start=text.index("## EXP-029"); end=text.find("\n## ",start+1)
+        if end<0:end=len(text)
+        section=re.sub(r"\*\*状态：[^\n]*?\*\*",f"**状态：{state['status']}，{n}/5完成，待研究验收。**",text[start:end],count=1)
+        text=text[:start]+section+text[end:]
     tracker.write_text(text)
     index=RESEARCH/"reports/so2/README.md"
     if "SO2-T011.md" not in index.read_text():
