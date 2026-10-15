@@ -78,7 +78,7 @@ def watch(state,seed):
             assert child.returncode==0,f"seed{seed} exited {child.returncode}; no retry"
             a=json.loads((run/"acceptance.json").read_text())
             assert a["accepted"] and first_seen
-            assert a["updates"]=={"critic":950000,"actor":95000,"alpha":0}
+            assert a["final_state"]["updates"]=={"critic":950000,"actor":95000,"alpha":0}
             entry.update(status="completed",acceptance=a)
     except BaseException:
         entry["status"]="partial"
