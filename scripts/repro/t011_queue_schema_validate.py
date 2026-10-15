@@ -17,6 +17,8 @@ def exercise(label,changes=None):
     source=run_path(0)
     meta=json.loads((source/"run_meta.json").read_text())
     accepted=json.loads((source/"acceptance.json").read_text())
+    parent=parent_manifest(0)
+    controls=queue.control_events(0)
     if changes=="wrong_updates":accepted["final_state"]["updates"]["critic"]-=1
     elif changes=="not_accepted":accepted["accepted"]=False
     elif changes=="missing_final_state":del accepted["final_state"]
@@ -30,7 +32,6 @@ def exercise(label,changes=None):
         (run/"ckpt/envstep_7500.pth.tar").symlink_to(source/"ckpt/envstep_7500.pth.tar")
         state={"stages":{},"code_sha":sha}
         real_popen=subprocess.Popen
-        real_output=subprocess.check_output
         real_sleep=time.sleep
         commands=[]
         def child(cmd,**kwargs):
@@ -39,10 +40,14 @@ def exercise(label,changes=None):
             return real_popen([sys.executable,"-c","import time;time.sleep(.2)"],**kwargs)
         def output(cmd,**kwargs):
             if cmd[0]=="nvidia-smi":return ""
-            return real_output(cmd,**kwargs)
+            if cmd==["git","rev-parse","HEAD"]:return sha+"\n"
+            if cmd==["git","status","--porcelain"]:return ""
+            raise AssertionError(f"unexpected subprocess query {cmd}")
         error=None
         with patch.object(queue,"WORK",work),patch.object(queue,"STATE",work/"queue_state.json"), \
              patch.object(queue,"run_path",return_value=run), \
+             patch.object(queue,"parent_manifest",return_value=parent), \
+             patch.object(queue,"control_events",return_value=controls), \
              patch.object(queue.subprocess,"Popen",side_effect=child), \
              patch.object(queue.subprocess,"check_output",side_effect=output), \
              patch.object(queue.time,"sleep",side_effect=lambda seconds:real_sleep(.03)):
