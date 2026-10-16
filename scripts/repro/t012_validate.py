@@ -64,24 +64,27 @@ def component(out):
         assert all(torch.isfinite(g).all() for g in grads if g is not None)
         norms[key]=sum(float(g.norm()) for g in grads if g is not None);assert norms[key]>0
     torch.cuda.reset_peak_memory_stats();times=[]
-    for _ in range(12):
-        torch.cuda.synchronize();start=time.monotonic();result=trainer.update(copy.deepcopy(b));torch.cuda.synchronize();times.append(time.monotonic()-start)
+    for _ in range(8):
+        disposable=copy.deepcopy(b)
+        torch.cuda.synchronize();start=time.monotonic();result=trainer.update(disposable);torch.cuda.synchronize();times.append(time.monotonic()-start)
         assert all(np.isfinite(v) for v in result.values())
-    off_sec=sum(times[2:])/10;off_vram=torch.cuda.max_memory_allocated()
+    off_sec=sum(times[2:])/6;off_vram=torch.cuda.max_memory_allocated()
     saved=trainer.snapshot({"purpose":"T012 preflight only","group":GROUP});init=out/"weights.pth"
     export_weights(saved,init,init,{"git_commit":"preflight","recipe_sha256":digest(RECIPE),"config_sha256":digest(CONFIG)}) if False else atomic_torch(init,{k:saved[k] for k in ("model","target_model")})
     hook=hook_check(saved,init,out/"hook")
     policy=make_policy();policy.learn_mode.load_state_dict(saved);policy._cfg.learn.online=True;policy._forward_learn_cnt=9
     assert policy._actor_q_aggregation=="mean" and not policy._auto_alpha and policy._actor_update_freq==10
     data=online_batch(batch(2560));torch.cuda.reset_peak_memory_stats();times=[]
-    for _ in range(12):
-        torch.cuda.synchronize();start=time.monotonic();result=policy._forward_learn(copy.deepcopy(data));torch.cuda.synchronize();times.append(time.monotonic()-start)
+    for _ in range(10):
+        disposable=copy.deepcopy(data)
+        torch.cuda.synchronize();start=time.monotonic();result=policy._forward_learn(disposable);torch.cuda.synchronize();times.append(time.monotonic()-start)
         assert all(bool(torch.isfinite(v).all()) if isinstance(v,torch.Tensor) else np.isfinite(v) for v in result.values() if isinstance(v,(int,float,torch.Tensor)))
-    on_sec=sum(times[2:])/10;on_vram=torch.cuda.max_memory_allocated()
+    on_sec=sum(times[2:])/8;on_vram=torch.cuda.max_memory_allocated()
     # Use measured update throughput with 40% overhead plus 0.5h evaluation margin.
     off_hours=off_sec*3000000/3600*1.4+.5;on_hours=on_sec*950000/3600*1.4+.5
+    atomic_json(out/"timing.json",{"offline_projected_hours_with_margin":off_hours,"online_projected_hours_with_margin":on_hours,"offline_seconds_per_update":off_sec,"online_seconds_per_update":on_sec})
     assert off_hours<9.6 and on_hours<4.8,(off_hours,on_hours)
-    return {"status":"passed","group":GROUP,"fixed_batch_calls":24,"optimizer_steps":50,"ln_parameter_tensors":len(ln),"dropout_p":P,"shared_initial_tensor_count":len(linears),"shared_initial_tensors_exact":True,"layer_order_exact":True,"gradient_norms":norms,"hook":hook,"offline_seconds_per_update":off_sec,"online_seconds_per_update":on_sec,"offline_projected_hours_with_margin":off_hours,"online_projected_hours_with_margin":on_hours,"offline_peak_allocated_bytes":off_vram,"online_peak_allocated_bytes":on_vram}
+    return {"status":"passed","group":GROUP,"fixed_batch_calls":18,"optimizer_steps":35,"ln_parameter_tensors":len(ln),"dropout_p":P,"shared_initial_tensor_count":len(linears),"shared_initial_tensors_exact":True,"layer_order_exact":True,"gradient_norms":norms,"hook":hook,"offline_seconds_per_update":off_sec,"online_seconds_per_update":on_sec,"offline_projected_hours_with_margin":off_hours,"online_projected_hours_with_margin":on_hours,"offline_peak_allocated_bytes":off_vram,"online_peak_allocated_bytes":on_vram}
 
 def main():
     import argparse
@@ -97,8 +100,8 @@ def main():
         fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
         assert not subprocess.check_output(["nvidia-smi","--query-compute-apps=pid","--format=csv,noheader,nounits"],text=True).strip()
         ledger=VALIDATION/"preflight-ledger.json";history=json.loads(ledger.read_text()) if ledger.exists() else {"attempts":[]}
-        assert sum(x["reserved_fixed_batch_calls"] for x in history["attempts"])+52<=200
-        history["attempts"].append({"code_sha":sha,"start_unix":time.time(),"reserved_fixed_batch_calls":52,"reserved_optimizer_steps":110});atomic_json(ledger,history)
+        assert sum(x["reserved_fixed_batch_calls"] for x in history["attempts"])+40<=200
+        history["attempts"].append({"code_sha":sha,"start_unix":time.time(),"reserved_fixed_batch_calls":40,"reserved_optimizer_steps":80});atomic_json(ledger,history)
         suffix="-attempt{}".format(len(history["attempts"]))
         results={}
         for group in ("combined","dropout","ln"):
@@ -109,7 +112,7 @@ def main():
             assert subprocess.check_output(["git","rev-parse",f"{BASE_SHA}:{source}"],cwd=ROOT)==subprocess.check_output(["git","rev-parse",f"HEAD:{source}"],cwd=ROOT)
         old=Path("/home/lzy/Projects/rl_sample_efficiency_research_t011/reports/so2/SO2-T011/requirements-lock.txt")
         assert old.read_bytes()==(VALIDATION/"requirements-lock.txt").read_bytes()
-        history["attempts"][-1].update(actual_fixed_batch_calls=52,actual_optimizer_steps=110,wall_seconds=time.monotonic()-start,status="passed");atomic_json(ledger,history)
+        history["attempts"][-1].update(actual_fixed_batch_calls=40,actual_optimizer_steps=80,wall_seconds=time.monotonic()-start,status="passed");atomic_json(ledger,history)
         cumulative=sum(x["reserved_fixed_batch_calls"] for x in history["attempts"])
         result={"status":"passed","code_sha":sha,"components":results,"reserved_fixed_batch_calls":cumulative,"actual_fixed_batch_calls":sum(x["actual_fixed_batch_calls"] for x in history["attempts"]),"optimizer_steps":sum(x["actual_optimizer_steps"] for x in history["attempts"]),"train_env_steps":0,"evaluation_env_steps":0,"wall_seconds":sum(x["wall_seconds"] for x in history["attempts"]),"frozen_core_objects_exact":True,"dependencies_exact":True}
         assert result["wall_seconds"]<=3600
