@@ -99,7 +99,7 @@ def main():
         ledger=VALIDATION/"preflight-ledger.json";history=json.loads(ledger.read_text()) if ledger.exists() else {"attempts":[]}
         assert sum(x["reserved_fixed_batch_calls"] for x in history["attempts"])+52<=200
         history["attempts"].append({"code_sha":sha,"start_unix":time.time(),"reserved_fixed_batch_calls":52,"reserved_optimizer_steps":110});atomic_json(ledger,history)
-        suffix=f"-attempt{len(history["attempts"])}"
+        suffix="-attempt{}".format(len(history["attempts"]))
         results={}
         for group in ("combined","dropout","ln"):
             with (VALIDATION/f"{group}{suffix}.log").open("x") as log:
