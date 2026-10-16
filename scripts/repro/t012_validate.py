@@ -87,7 +87,7 @@ def main():
     import argparse
     p=argparse.ArgumentParser();p.add_argument("--probe",action="store_true");a=p.parse_args();torch.set_num_threads(2)
     if a.probe:
-        out=VALIDATION/GROUP;out.mkdir();start=time.monotonic()
+        out=VALIDATION/(GROUP+os.environ.get("T012_ATTEMPT_SUFFIX",""));out.mkdir();start=time.monotonic()
         result=parity() if GROUP=="combined" else component(out)
         result.update(wall_seconds=time.monotonic()-start,train_env_steps=0,evaluation_env_steps=0)
         atomic_json(out/"result.json",result);return
@@ -99,17 +99,19 @@ def main():
         ledger=VALIDATION/"preflight-ledger.json";history=json.loads(ledger.read_text()) if ledger.exists() else {"attempts":[]}
         assert sum(x["reserved_fixed_batch_calls"] for x in history["attempts"])+52<=200
         history["attempts"].append({"code_sha":sha,"start_unix":time.time(),"reserved_fixed_batch_calls":52,"reserved_optimizer_steps":110});atomic_json(ledger,history)
+        suffix=f"-attempt{len(history["attempts"])}"
         results={}
         for group in ("combined","dropout","ln"):
-            with (VALIDATION/f"{group}.log").open("x") as log:
-                subprocess.run([PYTHON,__file__,"--probe"],cwd=ROOT,env={**os.environ,"T012_GROUP":group},stdout=log,stderr=subprocess.STDOUT,check=True,timeout=900)
-            results[group]=json.loads((VALIDATION/group/"result.json").read_text())
+            with (VALIDATION/f"{group}{suffix}.log").open("x") as log:
+                subprocess.run([PYTHON,__file__,"--probe"],cwd=ROOT,env={**os.environ,"T012_GROUP":group,"T012_ATTEMPT_SUFFIX":suffix},stdout=log,stderr=subprocess.STDOUT,check=True,timeout=900)
+            results[group]=json.loads((VALIDATION/(group+suffix)/"result.json").read_text())
         for source in ("SO2","scripts/repro/t010_edac.py","scripts/repro/configs/halfcheetah_medium_replay_t010.py","scripts/repro/configs/halfcheetah_medium_replay_t005.py"):
             assert subprocess.check_output(["git","rev-parse",f"{BASE_SHA}:{source}"],cwd=ROOT)==subprocess.check_output(["git","rev-parse",f"HEAD:{source}"],cwd=ROOT)
         old=Path("/home/lzy/Projects/rl_sample_efficiency_research_t011/reports/so2/SO2-T011/requirements-lock.txt")
         assert old.read_bytes()==(VALIDATION/"requirements-lock.txt").read_bytes()
+        history["attempts"][-1].update(actual_fixed_batch_calls=52,actual_optimizer_steps=110,wall_seconds=time.monotonic()-start,status="passed");atomic_json(ledger,history)
         cumulative=sum(x["reserved_fixed_batch_calls"] for x in history["attempts"])
-        result={"status":"passed","code_sha":sha,"components":results,"reserved_fixed_batch_calls":cumulative,"actual_fixed_batch_calls":52,"optimizer_steps":110,"train_env_steps":0,"evaluation_env_steps":0,"wall_seconds":time.monotonic()-start,"frozen_core_objects_exact":True,"dependencies_exact":True}
+        result={"status":"passed","code_sha":sha,"components":results,"reserved_fixed_batch_calls":cumulative,"actual_fixed_batch_calls":sum(x["actual_fixed_batch_calls"] for x in history["attempts"]),"optimizer_steps":sum(x["actual_optimizer_steps"] for x in history["attempts"]),"train_env_steps":0,"evaluation_env_steps":0,"wall_seconds":sum(x["wall_seconds"] for x in history["attempts"]),"frozen_core_objects_exact":True,"dependencies_exact":True}
         assert result["wall_seconds"]<=3600
         atomic_json(VALIDATION/"validation.json",result)
 if __name__=="__main__":main()
