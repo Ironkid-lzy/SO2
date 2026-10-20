@@ -32,6 +32,7 @@ class ENSEMBLEQAC(nn.Module):
             critic_dropout_rate: float = 0.0,
             activation: Optional[nn.Module] = nn.ReLU(),
             norm_type: Optional[str] = None,
+            actor_log_sigma_bounds=(-20., 2.),
     ) -> None:
         r"""
         Overview:
@@ -78,6 +79,7 @@ class ENSEMBLEQAC(nn.Module):
                     action_shape,
                     actor_head_layer_num,
                     sigma_type='conditioned',
+                    log_sigma_bounds=actor_log_sigma_bounds,
                     activation=activation,
                     norm_type=norm_type
                 )

@@ -105,6 +105,7 @@ class EDACPolicy(Policy):
             update_per_collect=1,
             # (int) Minibatch size for gradient descent.
             batch_size=256,
+            actor_q_aggregation='min',
 
             # (float type) learning_rate_q: Learning rate for soft q network.
             # Default to 3e-4.
@@ -186,6 +187,9 @@ class EDACPolicy(Policy):
             Learn mode init method. Called by ``self.__init__``.
             Init q, value and policy's optimizers, algorithm config, main and target models.
         """
+        self._actor_q_aggregation = self._cfg.learn.get('actor_q_aggregation', 'min')
+        if self._actor_q_aggregation not in ('min', 'mean'):
+            raise ValueError('actor_q_aggregation must be min or mean')
         # Init
         self._priority = self._cfg.priority
         self._priority_IS_weight = self._cfg.priority_IS_weight
@@ -383,7 +387,10 @@ class EDACPolicy(Policy):
 
             eval_data = {'obs': obs, 'action': action}
             new_q_value = self._learn_model.forward(eval_data, mode='compute_critic')['q_value']
-            new_q_value = torch.min(new_q_value, dim=0)[0]
+            if self._actor_q_aggregation == 'min':
+                new_q_value = torch.min(new_q_value, dim=0)[0]
+            else:
+                new_q_value = torch.mean(new_q_value, dim=0)
 
             if self._value_norm:
                 self._running_mean_std.update(new_q_value.detach().cpu().numpy())

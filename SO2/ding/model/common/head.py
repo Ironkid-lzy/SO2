@@ -612,6 +612,7 @@ class ReparameterizationHead(nn.Module):
         activation: Optional[nn.Module] = nn.ReLU(),
         norm_type: Optional[str] = None,
         bound_type: Optional[str] = None,
+        log_sigma_bounds=(-20., 2.),
     ) -> None:
         r"""
         Overview:
@@ -631,6 +632,8 @@ class ReparameterizationHead(nn.Module):
         """
         super(ReparameterizationHead, self).__init__()
         self.sigma_type = sigma_type
+        assert log_sigma_bounds[0] < log_sigma_bounds[1]
+        self.log_sigma_bounds = tuple(log_sigma_bounds)
         assert sigma_type in self.default_sigma_type, "Please indicate sigma_type as one of {}".format(
             self.default_sigma_type
         )
@@ -681,7 +684,7 @@ class ReparameterizationHead(nn.Module):
             sigma = torch.exp(log_sigma)
         elif self.sigma_type == 'conditioned':
             log_sigma = self.log_sigma_layer(x)
-            sigma = torch.exp(torch.clamp(log_sigma, -20, 2))
+            sigma = torch.exp(torch.clamp(log_sigma, *self.log_sigma_bounds))
         return {'mu': mu, 'sigma': sigma}
 
 
