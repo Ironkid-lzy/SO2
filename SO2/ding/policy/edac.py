@@ -106,6 +106,8 @@ class EDACPolicy(Policy):
             # (int) Minibatch size for gradient descent.
             batch_size=256,
             actor_q_aggregation='min',
+            actor_dropout_samples=1,
+            actor_mask_seed=130013,
 
             # (float type) learning_rate_q: Learning rate for soft q network.
             # Default to 3e-4.
@@ -190,6 +192,16 @@ class EDACPolicy(Policy):
         self._actor_q_aggregation = self._cfg.learn.get('actor_q_aggregation', 'min')
         if self._actor_q_aggregation not in ('min', 'mean'):
             raise ValueError('actor_q_aggregation must be min or mean')
+        self._actor_dropout_samples = self._cfg.learn.get('actor_dropout_samples', 1)
+        if type(self._actor_dropout_samples) is not int or self._actor_dropout_samples < 1:
+            raise ValueError('actor_dropout_samples must be a positive integer')
+        if self._actor_dropout_samples > 1 and self._actor_q_aggregation != 'mean':
+            raise ValueError('multiple actor dropout samples require mean aggregation')
+        self._actor_mask_seed = self._cfg.learn.get('actor_mask_seed', 130013)
+        self._actor_mask_rng = None
+        if self._actor_dropout_samples > 1:
+            self._actor_mask_rng = torch.Generator(device=self._device)
+            self._actor_mask_rng.manual_seed(self._actor_mask_seed)
         # Init
         self._priority = self._cfg.priority
         self._priority_IS_weight = self._cfg.priority_IS_weight
@@ -386,7 +398,7 @@ class EDACPolicy(Policy):
             log_prob = log_prob - torch.log(y).sum(-1, keepdim=True)
 
             eval_data = {'obs': obs, 'action': action}
-            new_q_value = self._learn_model.forward(eval_data, mode='compute_critic')['q_value']
+            new_q_value = self._actor_mask_q(eval_data)
             if self._actor_q_aggregation == 'min':
                 new_q_value = torch.min(new_q_value, dim=0)[0]
             else:
@@ -450,6 +462,26 @@ class EDACPolicy(Policy):
             **loss_dict
         }
 
+    def _actor_mask_q(self, data):
+        # Preserve the legacy first mask and its global RNG consumption exactly.
+        first = self._learn_model.forward(data, mode='compute_critic')['q_value']
+        if self._actor_dropout_samples == 1:
+            return first
+        device = data['action'].device
+        devices = [device.index] if device.type == 'cuda' else []
+        values = [first]
+        # Only additional masks use the private stream. No action is resampled.
+        with torch.random.fork_rng(devices=devices):
+            if device.type == 'cuda':
+                torch.cuda.set_rng_state(self._actor_mask_rng.get_state(), device)
+            else:
+                torch.set_rng_state(self._actor_mask_rng.get_state())
+            for _ in range(self._actor_dropout_samples - 1):
+                values.append(self._learn_model.forward(data, mode='compute_critic')['q_value'])
+            state = torch.cuda.get_rng_state(device) if device.type == 'cuda' else torch.get_rng_state()
+            self._actor_mask_rng.set_state(state)
+        return torch.stack(values, dim=0).mean(dim=0)
+
     def _get_fc_weight_norm(self, net):
         with torch.no_grad():
             return torch.sqrt(sum([torch.sum(m.weight.clone()**2) for m in net.modules() if isinstance(m, torch.nn.Linear)]))
@@ -468,6 +500,11 @@ class EDACPolicy(Policy):
             'optimizer_q': self._optimizer_q.state_dict(),
             'optimizer_policy': self._optimizer_policy.state_dict(),
         }
+        if self._actor_mask_rng is not None:
+            ret['actor_mask_rng'] = {
+                'samples': self._actor_dropout_samples, 'seed': self._actor_mask_seed,
+                'state': self._actor_mask_rng.get_state(),
+            }
         if self._value_network:
             ret.update({'optimizer_value': self._optimizer_value.state_dict()})
         if self._auto_alpha:
@@ -479,6 +516,13 @@ class EDACPolicy(Policy):
             assert {'model', 'target_model'} <= set(state_dict)
             self._learn_model.load_state_dict(state_dict['model'], strict=True)
             self._target_model.load_state_dict(state_dict['target_model'], strict=True)
+            if 'actor_mask_rng' in state_dict:
+                stream = state_dict['actor_mask_rng']
+                if self._actor_mask_rng is None or stream['samples'] != self._actor_dropout_samples:
+                    raise ValueError('actor mask RNG sample count mismatch')
+                if stream['seed'] != self._actor_mask_seed:
+                    raise ValueError('actor mask RNG seed mismatch')
+                self._actor_mask_rng.set_state(stream['state'].cpu())
             return
 
         # Author checkpoint migration: all actor and linear critic keys are required.
