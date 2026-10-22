@@ -7,6 +7,28 @@ LOCK=Path('/home/lzy/Projects/SO2/_so2_work/training_resource.lock')
 WORK=ROOT/'_so2_work/t013'
 def write(p,x):
     p.parent.mkdir(parents=True,exist_ok=True); t=p.with_suffix('.tmp');t.write_text(json.dumps(x,indent=2,allow_nan=False));os.replace(t,p)
+def group_alive(pgid):
+    # Ignore zombies: they cannot compute or retain a CUDA context.
+    for entry in Path('/proc').iterdir():
+        if not entry.name.isdigit(): continue
+        try:
+            fields=(entry/'stat').read_text().rsplit(')',1)[1].split()
+            if int(fields[2])==pgid and fields[0]!='Z': return True
+        except (FileNotFoundError,ProcessLookupError,PermissionError): pass
+    return False
+
+def stop_group(pgid):
+    if not group_alive(pgid): return
+    try: os.killpg(pgid,signal.SIGTERM)
+    except ProcessLookupError: return
+    until=time.monotonic()+5
+    while group_alive(pgid) and time.monotonic()<until: time.sleep(.1)
+    if group_alive(pgid):
+        try: os.killpg(pgid,signal.SIGKILL)
+        except ProcessLookupError: pass
+    # Keep the resource lock until no live member can retain GPU work.
+    while group_alive(pgid): time.sleep(.1)
+
 def supervise(job,command,seconds,work=WORK,deadline=DEADLINE,total=21600,lockpath=LOCK,check_gpu=True):
     work.mkdir(parents=True,exist_ok=True)
     with lockpath.open('a+') as lock:
@@ -17,7 +39,9 @@ def supervise(job,command,seconds,work=WORK,deadline=DEADLINE,total=21600,lockpa
         assert time.time()<deadline and state['used_seconds']<total
         if check_gpu:
             assert not subprocess.check_output(['nvidia-smi','--query-compute-apps=pid','--format=csv,noheader,nounits'],text=True).strip(), 'GPU occupied'
-        limit=min(seconds,total-state['used_seconds'],deadline-time.time())
+        # Reserve 30s inside the cumulative budget for TERM/KILL and bookkeeping.
+        limit=min(seconds,total-state['used_seconds']-30,deadline-time.time())
+        assert limit>0, 'insufficient remaining budget for safe cleanup'
         base=state['used_seconds']; start=time.monotonic()
         item={'job':job,'status':'running','command':command,'start_unix':time.time(),'limit_seconds':limit,'supervisor_pid':os.getpid()}
         state['jobs'].append(item);write(path,state)
@@ -41,14 +65,14 @@ def supervise(job,command,seconds,work=WORK,deadline=DEADLINE,total=21600,lockpa
                         break
                     time.sleep(.25)
                 # Remove any descendants left behind by a failed root.
-                try:os.killpg(proc.pid,signal.SIGTERM)
-                except ProcessLookupError:pass
+                stop_group(proc.pid)
                 code=proc.returncode
             item.update(status='completed' if code==0 and reason is None else 'partial',exit_code=code,stop_reason=reason)
         except BaseException as exc:
             item.update(status='partial',error=repr(exc))
-            if proc and proc.poll() is None:
-                os.killpg(proc.pid,signal.SIGKILL);proc.wait()
+            if proc:
+                stop_group(proc.pid)
+                if proc.poll() is None: proc.wait()
             raise
         finally:
             item.update(end_unix=time.time(),wall_seconds=time.monotonic()-start)

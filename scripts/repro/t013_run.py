@@ -38,7 +38,7 @@ def online(run,parent,seed=0,exp_id="EXP-026",parent_record=None,wall_seconds=No
     cfg.exp_name=str(run.relative_to(ROOT));configure_load(cfg,init_path)
     effective=json.loads(RECIPE.read_text())
     effective.update(seed=seed,actor_aggregation="mean",actor_dropout_samples=4,actor_mask_seed=130013,online_exp="EXP-034",online_wall_sec=budget,
-                     preflight_update_limit=100,plan_sha=PLAN_SHA)
+                     preflight_update_limit=None,preflight_wall_sec=None,preflight_fixed_batch_calls=2869,plan_sha=PLAN_SHA)
     atomic_json(run/"effective_recipe.json",effective)
     meta={**ident,"status":"running","phase":"online","exp_id":exp_id,"start_unix":time.time(),
           "checkpoint_path":str(parent),"checkpoint_sha256":digest(parent),"parent_offline_exp":"EXP-025" if seed==0 else "EXP-027",
