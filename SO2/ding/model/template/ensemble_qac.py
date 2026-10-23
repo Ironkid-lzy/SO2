@@ -436,11 +436,16 @@ class ParallelizedEnsembleFlattenMLP(nn.Module):
         # input normalization
         h = flat_inputs
 
+        # Optional one-forward context; default dropout remains unchanged.
+        pair_context = getattr(self, "_dropout_pair_context", None)
         # standard feedforward network
         for i, fc in enumerate(self.fcs):
             h = fc(h, self.num_q)
             if self.use_layer_norm or self.dropout_rate:
-                h = F.dropout(h, p=self.dropout_rate, training=self.training)
+                if pair_context is None:
+                    h = F.dropout(h, p=self.dropout_rate, training=self.training)
+                else:
+                    h = pair_context.apply(h, i, self.dropout_rate, self.training)
                 if self.use_layer_norm:
                     h = F.layer_norm(h, (h.shape[-1],))
                     h = h * self.layer_norm_weights[i] + self.layer_norm_biases[i]
@@ -450,6 +455,8 @@ class ParallelizedEnsembleFlattenMLP(nn.Module):
                 h = self.hidden_activation(h)
                 if self.layer_norm is not None:
                     h = self.layer_norm(h)
+        if pair_context is not None:
+            self._dropout_pair_context = None
         preactivation = self.last_fc(h, self.num_q)
         output = self.output_activation(preactivation)
 
