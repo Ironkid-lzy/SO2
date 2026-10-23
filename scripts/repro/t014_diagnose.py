@@ -43,6 +43,59 @@ def draw_gradient(model, obs, actions, masks, action_seed, mask_seed, fixed_eps=
     return result
 
 
+def timed_loss(model, obs, actions, masks, private_state):
+    """Native first action/mask; only proposed extra branches incur RNG isolation."""
+    mu, sigma = model(obs, mode='compute_actor')['logit']
+    dist = Independent(torch.distributions.Normal(mu, sigma), 1)
+    def branch():
+        z = dist.rsample(); act = z.tanh()
+        lp = dist.log_prob(z) - torch.log(1-act.square()+1e-6).sum(-1)
+        q = model({'obs':obs,'action':act},mode='compute_critic')['q_value'].mean(0)
+        return act, lp, q
+    action, logp, first_q = branch()
+    if actions == masks == 1:
+        return (.2*logp-first_q).mean(), private_state
+    losses = []
+    with torch.random.fork_rng(devices=[0]):
+        torch.cuda.set_rng_state(private_state)
+        if actions == 4:
+            losses = [(.2*logp-first_q).mean()]
+            for _ in range(3):
+                _, lp, q = branch(); losses.append((.2*lp-q).mean())
+            loss = torch.stack(losses).mean()
+        else:
+            qs = [first_q]
+            for _ in range(3):
+                qs.append(model({'obs':obs,'action':action},mode='compute_critic')['q_value'].mean(0))
+            loss = (.2*logp-torch.stack(qs).mean(0)).mean()
+        private_state = torch.cuda.get_rng_state()
+    return loss, private_state
+
+
+def measure_costs(model, obs, ci, bi):
+    # Outer diagnostic-only fork is outside every measured call.
+    with torch.random.fork_rng(devices=[0]):
+        torch.manual_seed(140018+ci*4+bi);torch.cuda.manual_seed(140018+ci*4+bi)
+        states = {i:torch.Generator(device='cuda').manual_seed(140019+i).get_state() for i in range(3)}
+        def step(ai):
+            a,k = ARMS[ai]
+            model.zero_grad(set_to_none=True)
+            loss,states[ai] = timed_loss(model,obs,a,k,states[ai])
+            loss.backward()
+        for ai in range(3):
+            for _ in range(10):step(ai)
+        order = list(range(3))*60;random.Random(140015+ci*4+bi).shuffle(order)
+        timings = {f'A{a}K{k}': [] for a,k in ARMS};peaks = {key:0 for key in timings}
+        for ai in order:
+            a,k = ARMS[ai];key=f'A{a}K{k}'
+            torch.cuda.synchronize();torch.cuda.reset_peak_memory_stats();t=time.perf_counter()
+            step(ai)
+            torch.cuda.synchronize();elapsed=time.perf_counter()-t
+            timings[key].append(elapsed);peaks[key]=max(peaks[key],torch.cuda.max_memory_allocated())
+        model.zero_grad(set_to_none=True)
+    return timings,peaks
+
+
 def variance(x):
     return ((x - x.mean(0)).square().sum() / (len(x) - 1)).item()
 
@@ -114,11 +167,13 @@ def main():
                     inner.append(draw_gradient(model, obs, 1, 1, 0, base + 1000 + a*8 + m, eps).detach().cpu())
                 nested.append(torch.stack(inner))
             nested = torch.stack(nested).double()
+            assert torch.isfinite(nested).all()
             vm = nested.var(1, unbiased=True).sum(1).mean().item()
             va_raw = variance(nested.mean(1)) - vm/8
             del nested
             reference = torch.stack([draw_gradient(model, obs, 1, 1, base+2000+r, base+3000+r).detach().cpu()
                                      for r in range(128)]).double()
+            assert torch.isfinite(reference).all()
             reference_mean = reference.mean(0)
             cell = {'batch': bi, 'nested': {'mask_trace': vm, 'action_trace_raw': va_raw,
                                            'estimated_A1K1_trace': va_raw+vm,
@@ -135,17 +190,8 @@ def main():
                 # Full gradients preserved on remote only; compact statistics synced.
                 torch.save(gs, OUT / f'{label}-b{bi}-A{actions}K{masks}-gradients.pt')
                 del gs
-            # Interleave timings to avoid arm/day/GPU warm-up confounding.
-            for ai,(a,k) in enumerate(ARMS):
-                for n in range(10): draw_gradient(model, obs, a,k, base+11000+n,base+12000+n)
-            order = list(range(3))*60; random.Random(140015+ci*4+bi).shuffle(order)
-            timings = {f'A{a}K{k}': [] for a,k in ARMS}; peaks = {key:0 for key in timings}
-            for n,ai in enumerate(order):
-                a,k = ARMS[ai]; key=f'A{a}K{k}'
-                torch.cuda.synchronize(); torch.cuda.reset_peak_memory_stats(); t=time.perf_counter()
-                g = draw_gradient(model,obs,a,k,base+13000+n,base+14000+n)
-                torch.cuda.synchronize(); elapsed=time.perf_counter()-t
-                timings[key].append(elapsed);peaks[key]=max(peaks[key],torch.cuda.max_memory_allocated()); del g
+            # Training-style backward timing is separate from gradient statistics.
+            timings, peaks = measure_costs(model, obs, ci, bi)
             for key,values in timings.items():
                 cell['arms'][key].update(seconds_mean=statistics.mean(values),seconds_median=statistics.median(values),
                                          seconds_p90=sorted(values)[53],peak_allocated_bytes=peaks[key])
@@ -173,7 +219,7 @@ def main():
             quarter_ratios.append(prod('A4K1')/prod('A1K1'))
         point['aggregate']=agg;point['A4K1_quarter_ratios']=quarter_ratios
         point['gate_point_pass']=agg['A4K1']['variance_cost_ratio']<=.8
-        point['gate_unstable']=min(quarter_ratios)<=.8<max(quarter_ratios)
+        point['gate_unstable']=any(x>.8 for x in quarter_ratios)
         report['points'].append(point);report.pop('active_point',None)
         atomic_json(OUT/'report.json',report);del model
     report.update(status='completed',gate_points=sum(p['gate_point_pass'] and not p['gate_unstable'] for p in report['points']),
