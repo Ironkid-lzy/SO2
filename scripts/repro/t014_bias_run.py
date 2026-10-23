@@ -17,9 +17,10 @@ def interval_summary(x):
 
 def case(env,snap,model,ident,ci,step,direction_id):
     cellid=f'{ident["label"]}-s{step}-u{direction_id}'
-    rng=np.random.default_rng(14003000+ci*10000+step*2+direction_id)
-    obs=snap['obs']; _,_,z=transition(model,obs,rng.normal(size=6))
-    u=rng.choice([-1.,1.],6)/math.sqrt(6)
+    action_rng=np.random.default_rng(14003000+ci*10000+step)
+    direction_rng=np.random.default_rng(14003100+ci*10000+step*2+direction_id)
+    obs=snap['obs']; _,_,z=transition(model,obs,action_rng.normal(size=6))
+    u=direction_rng.choice([-1.,1.],6)/math.sqrt(6)
     masks=project_masks(model,obs,z,u,14004000+ci*10000+step*2+direction_id)
     mean=statistics.mean(masks);sd=statistics.stdev(masks)
     cell={'id':cellid,'checkpoint':ident,'state_step':step,'direction_id':direction_id,
