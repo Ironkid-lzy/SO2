@@ -1,5 +1,6 @@
 """One admitted seed0 run only; frozen T011 pipeline with opt-in critic pairing."""
 import argparse
+import os
 import signal
 import traceback
 from t014_a1_common import *
@@ -8,7 +9,7 @@ from t010_run import rows, finite_model, interrupted
 from t011_guards import install_guards
 
 
-def admission():
+def admission(seconds):
     assert not subprocess.check_output(['git','status','--porcelain'],cwd=ROOT,text=True).strip()
     hashes=source_hashes()
     for name in ['validation-cpu-final.json','validation-cuda.json']:
@@ -17,18 +18,35 @@ def admission():
         assert val['protocol_sha256']==digest(PROTO)
     val=json.loads((WORK/'validation-cuda.json').read_text())
     assert val['benchmark']['formal_admitted']
+    # Revalidate the measured 30%-margin estimate at actual dispatch time.
+    ledger=json.loads((ROOT/'_so2_work/t014/budget.json').read_text())
+    protocol=json.loads(PROTO.read_text())
+    job=next(j for j in ledger['jobs'] if j['job']=='a1-online-s0-v1')
+    assert job['status']=='running' and job['pid']==os.getpid()
+    elapsed=max(0,time.time()-job['start_unix'])
+    stage_remaining=protocol['stage_budget']['absolute_T014_job_ledger_limit_for_A1']-ledger['used_seconds']
+    outer_remaining=job['limit_seconds']-elapsed
+    estimated=val['benchmark']['estimated_formal_seconds_with30percent']
+    assert 0<seconds and seconds+30<=job['limit_seconds']
+    available=min(stage_remaining-60,outer_remaining-60,seconds-60)
+    assert estimated<=available, (estimated,available)
+    dispatch_budget=dict(estimated_seconds_with30percent=estimated,stage_remaining_seconds=stage_remaining,
+                         outer_remaining_seconds=outer_remaining,inner_seconds=seconds,
+                         outer_limit_seconds=job['limit_seconds'],available_after_reserve_seconds=available,
+                         checked_unix=time.time(),passed=True)
     review=json.loads((WORK/'review-approved.json').read_text())
     assert review['approved'] and review['source_sha256']==hashes
     assert review['protocol_sha256']==digest(PROTO)
     assert not list(Path('/home/lzy/Projects').glob('SO2*/_so2_work/runs/EXP-035*'))
     assert shutil.disk_usage(ROOT).free>8*1024**3
+    atomic_json(WORK/'formal-admission.json',dispatch_budget)
     return hashes
 
 
 def online(seconds):
     from ding.entry import serial_pipeline_offline2online
     from t003_accept import check
-    hashes=admission()
+    hashes=admission(seconds)
     assert 0<seconds<18000
     with (WORK/'formal-start.json').open('x') as f:
         json.dump({'seed':0,'EXP':'EXP-035','started':time.time()},f)
