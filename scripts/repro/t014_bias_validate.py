@@ -1,11 +1,14 @@
 """Bounded actual CPU environment semantics. No scientific calibration results."""
-import inspect, json, math, pickle, signal, time
+import argparse, inspect, json, math, pickle, signal, time
 from pathlib import Path
 from t014_bias_env import *
 from t014_reference_math import paired_direction_summary
 ROOT=Path(__file__).resolve().parents[2];OUT=ROOT/'_so2_work/t014/d02-cpu-semantics-v1'
 
 def main():
+    global OUT
+    ap=argparse.ArgumentParser();ap.add_argument('--attempt',type=int,default=1);args=ap.parse_args()
+    OUT=ROOT/f'_so2_work/t014/d02-cpu-semantics-v{args.attempt}'
     torch.set_num_threads(1);OUT.mkdir(parents=True,exist_ok=False)
     env=ReferenceEnv(OUT/'counts.json',2048); report={'status':'running','CUDA_initialized':False}
     try:

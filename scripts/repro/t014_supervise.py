@@ -29,12 +29,15 @@ def stop_group(pgid):
     # Keep the resource lock until no live member can retain GPU work.
     while group_alive(pgid): time.sleep(.1)
 
-def supervise(job,command,seconds,work=WORK,deadline=DEADLINE,total=86400,lockpath=LOCK,check_gpu=True):
+def supervise(job,command,seconds,work=WORK,deadline=DEADLINE,total=86400,lockpath=LOCK,check_gpu=True,acknowledged_cpu_failures=()):
     work.mkdir(parents=True,exist_ok=True)
     with lockpath.open('a+') as lock:
         fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
         path=work/'budget.json'; state=json.loads(path.read_text()) if path.exists() else {'used_seconds':0,'jobs':[]}
-        assert all(j['status']=='completed' for j in state['jobs']), 'prior failure/running job: no automatic restart'
+        acks=set(acknowledged_cpu_failures)
+        eligible={j['job'] for j in state['jobs'] if j['status']=='partial' and j['job'].startswith('d02-cpu-semantics-v')}
+        assert acks <= eligible, 'only explicitly inspected CPU semantics failures may be acknowledged'
+        assert all(j['status']=='completed' or (j['status']=='partial' and j['job'] in acks) for j in state['jobs']), 'prior failure/running job: no automatic restart'
         assert job not in [j['job'] for j in state['jobs']], 'duplicate job'
         assert (deadline is None or time.time()<deadline) and state['used_seconds']<total
         if check_gpu:
@@ -44,6 +47,7 @@ def supervise(job,command,seconds,work=WORK,deadline=DEADLINE,total=86400,lockpa
         assert limit>0, 'insufficient remaining budget for safe cleanup'
         base=state['used_seconds']; start=time.monotonic()
         item={'job':job,'status':'running','command':command,'start_unix':time.time(),'limit_seconds':limit,'supervisor_pid':os.getpid()}
+        item['explicitly_acknowledged_prior_CPU_failures']=sorted(acks)
         state['jobs'].append(item);write(path,state)
         proc=None; reason=None; stop=False
         def interrupted(sig,frame):
@@ -80,6 +84,6 @@ def supervise(job,command,seconds,work=WORK,deadline=DEADLINE,total=86400,lockpa
             write(path,state)
         return 0 if item['status']=='completed' else 1
 if __name__=='__main__':
-    p=argparse.ArgumentParser();p.add_argument('--job',required=True);p.add_argument('--seconds',type=float,required=True);p.add_argument('command',nargs=argparse.REMAINDER);a=p.parse_args()
+    p=argparse.ArgumentParser();p.add_argument('--job',required=True);p.add_argument('--seconds',type=float,required=True);p.add_argument('--acknowledge-cpu-failure',action='append',default=[]);p.add_argument('command',nargs=argparse.REMAINDER);a=p.parse_args()
     command=a.command[1:] if a.command[0]=='--' else a.command
-    sys.exit(supervise(a.job,command,a.seconds))
+    sys.exit(supervise(a.job,command,a.seconds,acknowledged_cpu_failures=a.acknowledge_cpu_failure))

@@ -54,21 +54,23 @@ class ReferenceEnv:
 
     def snapshot(self):
         sim=self.base.sim; st=sim.get_state()
-        arrays={name:getattr(sim.data,name).copy() for name in (
+        arrays={name:copy.deepcopy(getattr(sim.data,name)) for name in (
             'qacc_warmstart','qacc','ctrl','qfrc_applied','xfrc_applied','mocap_pos','mocap_quat','userdata')}
         return {'sim':{'time':st.time,'qpos':st.qpos.copy(),'qvel':st.qvel.copy(),
-                       'act':st.act.copy(),'udd_state':copy.deepcopy(st.udd_state)},
+                       'act':copy.deepcopy(st.act),'udd_state':copy.deepcopy(st.udd_state)},
                 'arrays':arrays,'np_random':copy.deepcopy(self.base.np_random),
                 'elapsed':[(i,copy.deepcopy(vars(w)['_elapsed_steps'])) for i,w in enumerate(self.chain) if '_elapsed_steps' in vars(w)],
                 'obs':self.base._get_obs().copy()}
 
     def restore(self, snap):
         s=snap['sim']; sim=self.base.sim
-        sim.set_state(mujoco_py.MjSimState(s['time'],s['qpos'].copy(),s['qvel'].copy(),s['act'].copy(),copy.deepcopy(s['udd_state'])))
-        for key,value in snap['arrays'].items():getattr(sim.data,key)[:]=value
+        sim.set_state(mujoco_py.MjSimState(s['time'],s['qpos'].copy(),s['qvel'].copy(),copy.deepcopy(s['act']),copy.deepcopy(s['udd_state'])))
+        for key,value in snap['arrays'].items():
+            if value is not None:getattr(sim.data,key)[:]=value
         sim.forward()
         # forward recomputes accelerations; restore integration solver caches too.
-        for key,value in snap['arrays'].items():getattr(sim.data,key)[:]=value
+        for key,value in snap['arrays'].items():
+            if value is not None:getattr(sim.data,key)[:]=value
         self.base.np_random=copy.deepcopy(snap['np_random'])
         for i,x in snap['elapsed']:self.chain[i]._elapsed_steps=copy.deepcopy(x)
         obs=self.base._get_obs().copy()
