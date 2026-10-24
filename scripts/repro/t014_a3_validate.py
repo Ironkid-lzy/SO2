@@ -82,8 +82,13 @@ def correctness(device,weights):
     checkpoint=stage.WORK/f'validation-reload-{device}.pth'
     atomic_torch(checkpoint,off.learn_mode.state_dict())
     fresh,_=policy(device,weights,True)
-    fresh.learn_mode.load_state_dict(torch.load(checkpoint,map_location='cpu',weights_only=False))
-    fresh._forward_learn_cnt=off._forward_learn_cnt
+    restored=torch.load(checkpoint,map_location='cpu',weights_only=False)
+    fresh.learn_mode.load_state_dict(restored)
+    # Native frozen loader intentionally restores only network weights. These
+    # test-only explicit optimizer/counter copies do not add production resume.
+    fresh._optimizer_q.load_state_dict(restored['optimizer_q'])
+    fresh._optimizer_policy.load_state_dict(restored['optimizer_policy'])
+    off._forward_learn_cnt=fresh._forward_learn_cnt=19
     equivalent(off.learn_mode.state_dict(),fresh.learn_mode.state_dict())
     state=rng_state();before=off.learn_mode.forward(batch);after=rng_state()
     restore_rng(state);reloaded=fresh.learn_mode.forward(batch)
@@ -105,8 +110,8 @@ def correctness(device,weights):
                 matched_current_target_masks_and_three_update_RNG_exact=True,
                 same_first_actor_action_and_entropy_sample=True,actor_action_gradient_nonzero=True,
                 actor_off_equals_eval_critic_function=True,train_target_modes_unchanged=True,
-                reload_loss_state_RNG_exact=True,exception_cleanup=True,
-                environment_interactions=0,diagnostic_critic_updates=13,diagnostic_actor_updates=4)
+                reload_network_function_and_testonly_explicit_optimizer_counter_continuity=True,production_resume_supported=False,exception_cleanup=True,
+                environment_interactions=0,diagnostic_critic_updates=13,diagnostic_actor_updates=6)
 
 
 def benchmark(weights):
