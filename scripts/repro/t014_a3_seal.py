@@ -48,7 +48,7 @@ def main():
     output=ROOT/'_so2_work/deliveries/t014-a3-v1';output.mkdir(parents=True,exist_ok=False)
     abnormal=lost or (job and job.get('pgid') and group_alive(job['pgid']))
     cleanup=quiesce(job) if abnormal else dict(pgroups=[],live_after_cleanup=[],cleanup_seconds=0)
-    report=dict(status='partial' if lost else job['status'],seed=0,job=job,T014_used_seconds=state['used_seconds'],errors=[],no_next_job=True,cleanup=cleanup)
+    report=dict(status='partial' if lost else job['status'],seed=0,job=job,T014_used_seconds=state['used_seconds'],errors=[],no_next_job=True,cleanup=cleanup,exploratory_followup_value=False)
     if abnormal:
         dispatch_record=read(work/'dispatch.json') if (work/'dispatch.json').exists() else {}
         start_hint=(job or {}).get('start_unix',dispatch_record.get('started_unix'))
@@ -66,7 +66,6 @@ def main():
             treatment=evaluate(run/'metrics.jsonl');control=evaluate(Path(record['metrics_path']))
             assert treatment['points'][0]['returns']==control['points'][0]['returns']
             report.update(treatment=treatment,control=control,delta_auc=treatment['auc']-control['auc'],delta_final=treatment['final']-control['final'])
-            report['exploratory_followup_value']=report['delta_auc']>=1 and report['delta_final']>=-1
             assert read(run/'run_meta.json')['actor_dropout_off_queries']==95000
     except Exception:
         report['status']='verification_failed';report['errors'].append(traceback.format_exc())
@@ -82,5 +81,7 @@ def main():
         except Exception:
             row['error']=traceback.format_exc();report['status']='verification_failed';report['errors'].append(row['error'])
         files.append(row)
+    if report['status']=='completed':
+        report['exploratory_followup_value']=report['delta_auc']>=1 and report['delta_final']>=-1
     save(output/'report.json',report);save(output/'seal.json',dict(status=report['status'],files=files));save(marker,dict(status=report['status'],output=str(output),report_sha256=digest(output/'report.json'),job=job))
 if __name__=='__main__':main()
