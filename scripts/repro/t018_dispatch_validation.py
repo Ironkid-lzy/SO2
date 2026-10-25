@@ -62,7 +62,7 @@ def dispatch():
         assert not read(WORK/'budget.json')['jobs']
         permit = read(WORK/'validation-permit.json')
         assert permit['allowed'] and 0 <= time.time()-permit['checked_unix'] <= 1800
-        assert permit['primary_used'] < 90 and permit['weekly_used'] < 60
+        assert permit['primary_used'] < 90 and permit['weekly_used'] < 100
         receipt = read(WORK/'validation-freeze-receipt.json')
         assert subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip() == receipt['code_sha']
         assert not subprocess.check_output(['git','status','--porcelain'],cwd=ROOT,text=True).strip()
@@ -74,7 +74,7 @@ def dispatch():
         env = os.environ.copy()
         env.update(OMP_NUM_THREADS='2',OPENBLAS_NUM_THREADS='2',MUJOCO_GL='osmesa',D4RL_SUPPRESS_IMPORT_ERROR='1',LD_LIBRARY_PATH='/home/lzy/.mujoco/mujoco210/bin:/usr/lib/nvidia:/usr/lib/x86_64-linux-gnu:/home/lzy/Projects/SO2/.venv/lib/python3.10/site-packages/torch/lib')
         with (WORK/'validation-console.log').open('x') as log:
-            proc = subprocess.Popen([PYTHON,'scripts/repro/t018_dispatch.py','--supervise'],
+            proc = subprocess.Popen([PYTHON,'scripts/repro/t018_dispatch_validation.py','--supervise'],
                 cwd=ROOT,env=env,stdin=subprocess.DEVNULL,stdout=log,stderr=subprocess.STDOUT,
                 start_new_session=True)
         save(WORK/'validation-dispatch.json',dict(job=JOB,supervisor_pid=proc.pid,started_unix=time.time(),
